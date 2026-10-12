@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Campus: 调试 Java 后端",
+      "request": "launch",
+      "mainClass": "com.algrex.campus.CampusMentalHealthApplication",
+      "projectName": "campus-mental-health-backend",
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "vmArgs": "-Dfile.encoding=UTF-8",
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "pwa-chrome",
+      "name": "Campus: 调试 Vue 前端",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "Campus: 启动前端"
+    }
+  ]
+}
