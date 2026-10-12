@@ -1,0 +1,129 @@
+:root {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  color: #243749;
+  background: #f2f6f8;
+  font-synthesis: none;
+  line-height: 1.6;
+  --el-color-primary: #267b7b;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #183c46;
+  color: #eef6f7;
+  padding: 28px 20px;
+}
+.brand {
+  font-size: 19px;
+  font-weight: 650;
+  margin-bottom: 32px;
+}
+.brand span {
+  display: block;
+  font-size: 12px;
+  color: #b4d0d5;
+  font-weight: 400;
+}
+nav {
+  display: grid;
+  gap: 6px;
+}
+nav a {
+  color: #d2e4e7;
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+nav a:hover,
+nav a.router-link-exact-active {
+  background: #2a5360;
+  color: white;
+}
+.sidebar-note {
+  margin-top: 36px;
+  color: #b4d0d5;
+  font-size: 12px;
+}
+.content {
+  width: 100%;
+  max-width: 1240px;
+  padding: 36px;
+}
+.panel {
+  padding: 28px;
+  border: 1px solid #e0e8ec;
+  border-radius: 14px;
+  background: white;
+}
+.panel h1 {
+  font-size: 28px;
+  margin: 8px 0;
+}
+.panel h2 {
+  font-size: 18px;
+  margin: 8px 0 16px;
+}
+.eyebrow {
+  color: #267b7b;
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  margin: 0;
+}
+.muted {
+  color: #647784;
+}
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 22px;
+}
+@media (max-width: 900px) {
+  .module-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .content {
+    padding: 20px;
+  }
+}
+@media (max-width: 640px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    padding: 20px;
+  }
+  .brand {
+    margin-bottom: 16px;
+  }
+  nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sidebar-note {
+    margin: 12px 0 0;
+  }
+  .module-grid {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 20px;
+  }
+}

@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:campus-test;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+server:
+  port: 0

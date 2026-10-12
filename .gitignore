@@ -1,0 +1,36 @@
+# Local tools and caches
+.tools/
+.tmp/
+.m2/
+runtime/
+node_modules/
+
+# Build and test output
+target/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.log
+
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+application-local.yml
+*.mv.db
+*.trace.db
+*.h2.db
+data/private/**
+!data/private/.gitkeep
+models/artifacts/**
+!models/artifacts/.gitkeep
+
+# Editors and OS
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
