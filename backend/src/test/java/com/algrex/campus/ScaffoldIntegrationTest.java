@@ -21,15 +21,15 @@ class ScaffoldIntegrationTest {
   @Autowired private StudentProfileRepository students;
 
   @Test
-  void healthAndScaffoldMetadataAreAvailableWithoutAccounts() throws Exception {
+  void healthAndDemoMetadataAreAvailableWithoutAccounts() throws Exception {
     assertThat(get("/actuator/health").statusCode()).isEqualTo(200);
     HttpResponse<String> info = get("/api/v1/system/info");
     assertThat(info.statusCode()).isEqualTo(200);
-    assertThat(info.body()).contains("campus-mental-health", "SCAFFOLD", "PLANNED");
+    assertThat(info.body()).contains("campus-mental-health", "DEMO", "modules");
   }
 
   @Test
-  void businessEndpointsAreClosedUntilAuthenticationIsImplemented() throws Exception {
+  void anonymousRequestsCannotReadStudentData() throws Exception {
     assertThat(get("/api/v1/students").statusCode()).isEqualTo(401);
   }
 

@@ -1,48 +1,54 @@
-# Campus Mental Health
+# 心晴校园 · Campus Mental Health
 
-校园心理健康监测与异常预警系统。仓库提供 Java 后端、Vue 前端、关系数据库基础、机器学习依赖、安全配置、构建检查和开发工具入口。目前是工程骨架：账号、测评、风险模型、预警与干预业务仍待实现。
+校园心理健康关怀 Demo，包含学生自评与打卡、档案与趋势、规则预警、干预随访、角色权限、站内通知，以及 Java Weka 模型实验室。界面使用 Vue 3、Element Plus 和 ECharts；后端使用 Spring Boot、H2 和 Flyway，数据保存后可跨刷新与重启保留。
 
-克隆后的目录可以任意命名、放在任意可写位置；运行不依赖作者的电脑路径、父目录、课程资料或 SSH 配置。
+开发目录可任意命名，不依赖作者的盘符、Class7 父目录、课程文档或 SSH 身份。
 
-## 环境与版本
+## 运行环境
 
-| 工具 | 已验证基准 | 要求与获取方式 |
+| 工具 | 基准版本 | 说明 |
 | --- | --- | --- |
-| JDK | Temurin 21.0.12.1 | JDK 21；可指定自己的安装目录，也可使用基准 ZIP |
-| Node.js / npm | 24.15.0 / 11.12.1 | Node >=24.15.0、npm >=11；官方 Node 基准包自带相应 npm |
-| PowerShell | 7.5.6 | Windows 辅助脚本需要 PowerShell 7；命令名 `pwsh` |
-| Git | 2.52.0 | 用于克隆与协作，各人使用自己的 Git 身份 |
-| Maven | 3.10.0 | 官方 Wrapper 固定版本和 SHA256，无需全局安装 |
-| VS Code | 1.141.0 | 可选；8 个开发扩展的基准版本记录在清单中 |
+| JDK | Temurin 21.0.12.1 | 必须是 JDK 21，需包含 javac |
+| Node.js / npm | 24.15.0 / 11.12.1 | Node >=24.15.0、npm >=11 |
+| PowerShell | 7.5.6 | Windows 脚本需要 pwsh 7+ |
+| Maven | 3.10.0 | 官方 Wrapper 固定版本，无需全局安装 |
+| Git | 2.52.0 | 克隆与个人版本管理 |
+| VS Code | 1.141.0 | 可选，仓库只提供扩展推荐 |
 
-完整工具清单见 [dev-environment.json](dev-environment.json)。后端依赖版本由 `backend/pom.xml` 和 Spring Boot BOM 管理；前端由 `frontend/package-lock.json` 锁定。默认 H2 嵌入式数据库，无需另外安装数据库服务。
+后端 Spring Boot 4.1.1、Weka 3.8.6；前端版本由 `package-lock.json` 锁定。无需安装 MySQL、Python 或独立机器学习服务。完整环境复现、编辑器配置和安全卸载见 [开发环境指南](docs/development-environment.md)。
 
-## 克隆后快速开始（Windows）
-
-先准备 Git、PowerShell 7、Node.js 24.15.0，以及 JDK 21。详细下载链接、校验和可选编辑器安装见 [开发环境复现指南](docs/development-environment.md)。
+## 克隆与初始化
 
 ```powershell
 git clone https://github.com/Algrex/campus-mental-health.git
 cd campus-mental-health
 
-# 替换为你自己的 JDK 根目录，不是 bin 子目录。
+# 换成你自己的 JDK 根目录，不是 bin。
 pwsh -NoProfile -File scripts/setup.ps1 -JdkHome "D:\Tools\jdk-21"
 
-# 初始化后，验证后端与前端。
-pwsh -NoProfile -File scripts/check.ps1
+# 下载固定版本的小问卷与十万条生活方式数据；下载内容不进 Git。
+pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle
 ```
 
-如果下载的是清单中的 Windows x64 JDK ZIP，可以用以下命令替代上面的初始化命令；脚本会验证校验值、解压到本仓库的忽略目录：
+若使用基准 Windows x64 JDK ZIP，初始化命令可替换为：
 
 ```powershell
 pwsh -NoProfile -File scripts/setup.ps1 -JdkArchive "D:\Downloads\OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip" -StrictVersions
 ```
 
-初始化会记录本地 JDK 选择、准备 Maven、按锁文件安装前端依赖，并在**仓库外**生成 `<克隆文件夹名>.local.code-workspace`。它不会修改系统 PATH/JAVA_HOME，也不会自动安装 VS Code 扩展；需要扩展时添加 `-InstallEditorExtensions`。
+已下载大数据压缩包时：
 
-## 运行与构建
+```powershell
+pwsh -NoProfile -File scripts/download-demo-data.ps1 -LifestyleArchive "D:\Downloads\archive.zip"
+```
 
-在仓库根目录的两个终端分别运行：
+下载脚本核对 CSV SHA256，不覆盖未经确认的上游新版本。无网络时业务 Demo 仍可启动：缺少小问卷则生成 36 份虚构档案；缺少十万条数据则用小问卷运行逻辑回归与决策树；两者都缺少时可使用业务页面，模型页面提供数据准备入口。
+
+初始化只准备项目本地工具与依赖，不改系统 PATH/JAVA_HOME；在仓库外生成 `<克隆目录名>.local.code-workspace`。项目 `.vscode` 仅有扩展推荐，不携带个人路径、端口、调试配置。
+
+## 启动 Demo
+
+在仓库根目录开两个终端：
 
 ```powershell
 pwsh -NoProfile -File scripts/dev.ps1 -Service backend
@@ -52,39 +58,59 @@ pwsh -NoProfile -File scripts/dev.ps1 -Service backend
 pwsh -NoProfile -File scripts/dev.ps1 -Service frontend
 ```
 
-前端：`http://127.0.0.1:5173`；健康检查：`http://127.0.0.1:8080/actuator/health`；工程信息：`http://127.0.0.1:8080/api/v1/system/info`。前端开发代理默认连接本机 8080 后端。
+访问 **http://127.0.0.1:5173**。后端默认 **127.0.0.1:8080**。首次启动执行数据库迁移、演示数据初始化和模型训练；十万条实验需要额外等待，进度在后端终端显示。后续启动保留业务数据，模型默认重新训练，避免加载来源不明的模型文件。
 
-`pwsh -NoProfile -File scripts/check.ps1` 执行后端集成测试与 Google Java 格式检查，以及前端 lint、测试、格式检查和生产构建。产物分别位于 `backend/target/` 和 `frontend/dist/`。
+| 身份 | 账号 | 初始密码 | 数据范围 |
+| --- | --- | --- | --- |
+| 心理中心 | center | Campus2026! | 全校档案、预警、模型训练 |
+| 学院辅导员 | counselor | Campus2026! | 计算机学院档案与个案，可查看模型实验 |
+| 学生 | student | Campus2026! | 林同学的自评、打卡和个人档案 |
+| 联系人 | contact | Campus2026! | 指定收件人的最小关怀提醒 |
 
-独立命令、JAR 运行、数据库位置、端口配置、Linux/macOS 命令及常见问题见 [运行与构建指南](docs/development.md)。
+登录页可选择身份并填入演示账号。账号密码仅面向默认回环地址的本地演示；可通过后端终端 `DEMO_PASSWORD` 修改，`DEMO_ENABLED=false` 停用全部演示账号和数据初始化。不是面向公网的账号注册或真实短信平台。
 
-## 编辑器配置原则
+[演示流程](docs/demo-guide.md)介绍如何展示从自评到预警、受理、干预、复评和关闭的完整闭环。
 
-仓库 `.vscode` **仅有 extensions.json 扩展推荐**，不会覆盖 JDK 路径、终端环境、格式化设置、端口或调试配置。`config/vscode/workspace-template.json` 只是生成器使用的模板，不会自动成为你的编辑器设置。
+## 机器学习实验
 
-初始化生成的工作区文件包含这次克隆的实际路径、任务和调试入口。用 VS Code 打开它；扩展安装后重载窗口并新建终端。也可以直接打开仓库并自行配置编辑器，命令行构建不需要 VS Code。
+优先读取 `data/downloads/student_lifestyle_100k.csv`：100,000 条原作者生成的合成生活方式记录，MIT 许可。9 个特征预测 Depression 标签，移除 Student_ID 和目标字段。实现 Weka **Logistic、J48、RandomForest**，另有 ZeroR 多数类基线。
 
-## 工程目录
+- 同一分层 60% 训练 / 20% 验证 / 20% 测试；种子 42，开发集再划分种子 43。
+- 缺失值填充仅拟合训练数据；逻辑回归编码与标准化包含在模型内部。
+- 展示统一阈值 0.5 的测试准确率、精确率、召回率、F1、AUC 和混淆矩阵。
+- 只用验证集选择 F1 最优阈值，再在独立测试集评估，避免用测试数据调参。
+- 模型与 JSON 评估、训练/验证/测试 ARFF 保存到忽略目录 `models/artifacts/`。
 
-```text
-backend/              Spring Boot 后端、官方 Maven Wrapper、迁移与测试
-frontend/             JavaScript / Vue 前端与锁文件
-config/vscode/        可移植的工作区生成模板
-scripts/              初始化、本机工作区生成、启动、检查与格式化
-.github/workflows/    GitHub Actions 构建检查
-docs/                 环境复现、运行构建、架构、接口、数据库与测试
-data/                匿名样例与本地私有数据位置
-models/               本地可信模型产物位置
-dev-environment.json  工具与编辑器扩展基准
-AGENTS.md             仓库开发约定
+只有 101 条匿名问卷时使用分层 5 折交叉验证并进行全量重训，不添加随机森林。两类数据不混合，也不把平台生成的测评历史当训练样本。详见 [机器学习说明](docs/machine-learning.md)。
+
+模型实验与四级规则预警分开：模型预测公开数据标签，规则依据实际提交的自评与打卡触发关怀流程。结果不替代诊断。十万条合成数据的指标不能证明真实校园中的预测效果。
+
+## 构建与检查
+
+修改集中完成后执行：
+
+```powershell
+pwsh -NoProfile -File scripts/check.ps1
 ```
 
-课程分工、个人报告模板、课程排期和作者的本机安装记录在仓库之外，不作为项目运行依赖。`.tools`、依赖缓存、运行数据库和私有资料不加入 Git。
+检查包括后端权限与流程测试、Weka 训练/推理测试、Google Java 格式检查，以及前端 lint、交互测试、格式检查与生产构建。产物：`backend/target/campus-mental-health-backend-0.0.1-SNAPSHOT.jar`、`frontend/dist/`。
 
-## 功能与交付边界
+独立命令、JAR/preview 运行、端口调整、数据库备份与 Linux/macOS 命令见 [运行构建指南](docs/development.md)。
 
-仅健康与工程信息允许匿名 GET，其他业务路径默认拒绝访问；没有演示账号。前端业务页面明确标为待开发，数据库只有学生基础表，Weka 依赖不代表已训练模型。
+## 目录与持久化
 
-前端开发服务器和 `vite preview` 用于开发或预览。后端 JAR 与前端静态产物可分别运行；正式静态托管、登录权限及真实通知渠道需后续实现和配置。
+```text
+backend/              后端、Maven Wrapper、迁移与测试
+frontend/             Vue 页面、共享组件、接口和锁文件
+scripts/              初始化、数据准备、工作区生成、运行与检查
+config/vscode/        外部工作区的生成模板
+docs/                 环境、演示、模型、接口、架构和数据库说明
+data/downloads/       原始数据集（忽略 Git）
+models/artifacts/     本地模型与评估文件（忽略 Git）
+backend/runtime/      H2 业务数据库（忽略 Git）
+.tools/               本地工具与缓存（忽略 Git）
+```
 
-协作规则见 [CONTRIBUTING.md](CONTRIBUTING.md)，实现前查阅 [架构](docs/architecture.md)、[接口](docs/api/README.md) 与 [数据库说明](docs/database/README.md)。
+原始公开数据、虚构演示身份、演示生成历史与用户操作记录分别注明来源。101 份演示档案与十万条建模记录是独立数据，不关联成同一学生。
+
+课程分工、个人报告和本机安装记录放在仓库外，不影响克隆运行。仓库协作约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

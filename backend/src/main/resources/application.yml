@@ -18,6 +18,12 @@ spring:
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 120m
+      cookie:
+        http-only: true
+        same-site: lax
 management:
   endpoints:
     web:
@@ -26,3 +32,14 @@ management:
   endpoint:
     health:
       show-details: never
+
+app:
+  demo:
+    enabled: ${DEMO_ENABLED:true}
+    password: ${DEMO_PASSWORD:Campus2026!}
+    dataset: ${DEMO_DATASET:../data/downloads/student-mental-health.csv}
+
+  ml:
+    dataset: ${ML_DATASET:../data/downloads/student_lifestyle_100k.csv}
+    auto-train: ${ML_AUTO_TRAIN:true}
+    artifacts: ${ML_ARTIFACTS:../models/artifacts}

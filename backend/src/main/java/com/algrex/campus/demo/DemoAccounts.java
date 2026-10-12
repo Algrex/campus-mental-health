@@ -8,10 +8,12 @@ import org.springframework.stereotype.Component;
 /** Public local-demo identities; passwords are configured separately and hashed at startup. */
 @Component
 public class DemoAccounts {
-  public record Account(String username, String displayName, String role, String studentId, String college) {}
+  public record Account(
+      String username, String displayName, String role, String studentId, String college) {}
 
   public static UUID studentId(int index) {
-    return UUID.nameUUIDFromBytes(("campus-demo-student-" + index).getBytes(StandardCharsets.UTF_8));
+    return UUID.nameUUIDFromBytes(
+        ("campus-demo-student-" + index).getBytes(StandardCharsets.UTF_8));
   }
 
   public List<Account> all() {
@@ -23,7 +25,9 @@ public class DemoAccounts {
   }
 
   public Account get(String username) {
-    return all().stream().filter(account -> account.username().equals(username)).findFirst()
+    return all().stream()
+        .filter(account -> account.username().equals(username))
+        .findFirst()
         .orElseThrow(() -> new IllegalArgumentException("账号不存在"));
   }
 }

@@ -1,5 +1,11 @@
-# 数据位置
+# 数据目录
 
-`samples` 用于可公开的匿名样例和导入格式；当前没有数据集。`private` 用于获授权的本地资料，除目录占位文件外不加入 Git。
+`downloads/` 保存公开原始 CSV、ZIP 和来源记录，全部被 Git 忽略。准备完整 Demo：
 
-每份数据记录来源、许可、字段、匿名关联键、时间范围、缺失处理与真实/模拟标识。数据接入与模型开发时核实公开数据的任务适用性；不能把不同数据集中的人随意关联成同一学生。
+```powershell
+pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle
+```
+
+也可以通过 `-LifestyleArchive "自己的 archive.zip 路径"` 使用本地压缩包。脚本固定两份 CSV 的 SHA256；数据许可、字段与训练协议见 [机器学习说明](../docs/machine-learning.md)。小问卷 101 条为公开匿名自报数据；生活方式 100,000 条由原作者程序生成，不称为十万名真实学生。
+
+`samples/` 只用于公开导入格式；`private/` 是获授权资料位置，除占位文件外忽略。不要上传真实学生记录。两份数据不关联到同一个学生；平台虚构身份和趋势明确标注来源。

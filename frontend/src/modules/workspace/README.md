@@ -1,3 +1,5 @@
 # workspace
 
-后续在此维护模块页面、API 调用和交互测试；当前路由使用明确标注待开发的公共占位组件。公共布局和请求处理复用共享层，不在各模块重复实现。
+OverviewView.vue、StudentsView.vue、RisksView.vue、ModelsView.vue、AlertsView.vue、FollowUpsView.vue 提供工作端业务。
+
+当前页面集中在 `src/views`，共享组件位于 `src/components`，统一接口位于 `src/api/portal.js`。

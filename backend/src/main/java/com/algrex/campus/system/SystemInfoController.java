@@ -1,29 +1,24 @@
 package com.algrex.campus.system;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Publishes scaffold metadata, never student records or fabricated monitoring results. */
 @RestController
 @RequestMapping("/api/v1/system")
 public class SystemInfoController {
   @GetMapping("/info")
-  public SystemInfo info() {
-    return new SystemInfo(
+  public Map<String, Object> info() {
+    return Map.of(
+        "name",
         "campus-mental-health",
-        "SCAFFOLD",
-        List.of(
-            new ModuleInfo("auth", "账号与工程基础", "A", "PLANNED"),
-            new ModuleInfo("students", "档案与多源数据", "B", "PLANNED"),
-            new ModuleInfo("risk", "模型与风险评估", "C", "PLANNED"),
-            new ModuleInfo("alerts", "预警与干预闭环", "D", "PLANNED"),
-            new ModuleInfo("student-ui", "学生端", "E", "PLANNED"),
-            new ModuleInfo("workspace-ui", "工作端", "F", "PLANNED")));
+        "stage",
+        "DEMO",
+        "version",
+        "1.0",
+        "modules",
+        List.of("学生档案", "心理测评", "日常打卡", "关注评估", "预警随访", "站内通知", "Weka 模型实验"));
   }
-
-  public record SystemInfo(String name, String stage, List<ModuleInfo> modules) {}
-
-  public record ModuleInfo(String key, String title, String owner, String status) {}
 }

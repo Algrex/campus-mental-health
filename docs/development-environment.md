@@ -18,7 +18,7 @@
 
 复现基准时使用清单中的 JDK、Node/npm 和编辑器版本。`-StrictVersions` 会严格校验 JDK、Node、npm；普通初始化允许 JDK 21 的其他补丁版本、Node >=24.15.0、npm >=11，并提示差异。Git、PowerShell、IDE 的基准用于记录，脚本不强制它们的补丁版本。
 
-前端项目锁文件固定直接与传递依赖；后端使用固定 Spring Boot 4.1.1、Weka 3.8.6 及 Maven 插件配置。Maven 依赖通过 Maven Central 与 BOM 解析。不同操作系统和工具补丁可能生成不同的二进制产物；本指南复现的是开发与构建配置，不承诺逐字节相同的产物。
+前端项目锁文件固定直接与传递依赖；后端使用固定 Spring Boot 4.1.1、Weka 3.8.6（Java 内训练/推理，无需额外 Python）及 Maven 插件配置。Maven 依赖通过 Maven Central 与 BOM 解析。不同操作系统和工具补丁可能生成不同的二进制产物；本指南复现的是开发与构建配置，不承诺逐字节相同的产物。
 
 ## 2. 准备基础工具
 
@@ -146,6 +146,8 @@ pwsh -NoProfile -File scripts/configure-workspace.ps1 -JdkHome "E:\Tools\jdk-21"
 | `.tools/npm-cache/` | 初始化使用的 npm 缓存 | 忽略 |
 | `frontend/node_modules/` | 前端依赖 | 忽略 |
 | `backend/target/`、`frontend/dist/` | 构建结果 | 忽略 |
+| `data/downloads/` | 原始公开 CSV、ZIP、来源与许可记录 | 忽略 |
+| `models/artifacts/` | 模型、评估 JSON、ARFF 数据划分 | 忽略 |
 | `backend/runtime/` | 本地文件数据库 | 忽略，删除前备份 |
 
 Java 选择顺序是显式 `-JdkHome`、本地选择文件、当前 JAVA_HOME、项目便携 JDK、PATH 中的 javac。识别后要求 Java 主版本 21。若已有 JAVA_HOME 指向 17 或其他不适用版本，用 `setup.ps1 -JdkHome` 明确选择，不必改变系统全局设置。
@@ -166,12 +168,13 @@ Git 本地配置不会随 clone 复制。不要使用文档中的作者身份替
 
 ## 7. 课程或项目结束后的清理
 
-先备份源码、报告、模型和需保留的数据库，停止本项目的任务与调试会话，然后：
+先备份源码、报告、评估/模型和需保留的数据库，停止本项目的任务与调试会话，然后：
 
 - 便携 JDK、Maven/npm 缓存、node_modules 和构建产物可在确认不再使用后清理；它们能重新生成或下载。先删除或更新仓库外工作区的旧 JDK 路径。
 - `.tools/environment.local.json` 和仓库外工作区文件只属于本次克隆，可以删除；若其中后来加入其他项目设置，先保留这些内容。
 - 外部 `-JdkHome` 指向的共享 JDK不属于本项目，不能因清理缓存就一起删除。
 - 扩展可在 VS Code 中逐个卸载，或执行 `code --uninstall-extension <扩展ID>`；先核对安装前后清单和其他项目是否仍需要。不要清空整个用户 `.vscode` 或 VS Code 用户数据目录。
+- 原始下载数据和模型属于本项目，可在保留来源/评估记录后删除 `data/downloads` 与 `models/artifacts`；下载脚本和训练可恢复。不要删除自己后来添加到 data/private 的唯一资料。
 - 本地数据库不能当缓存直接删除；SSH 密钥、原有 Node/Git/编辑器也不属于项目清理范围。
 
 使用 PowerShell 清理时先核对绝对路径，采用 `Remove-Item -LiteralPath`，避免拼接跨 Shell 的删除命令。项目初始化不会创建全局 JAVA_HOME/PATH，无需系统环境回滚。
@@ -179,3 +182,9 @@ Git 本地配置不会随 clone 复制。不要使用文档中的作者身份替
 ## 8. 后续命令
 
 初始化后执行 `pwsh -NoProfile -File scripts/check.ps1`。启动、独立构建、JAR 与前端静态产物使用、Linux/macOS 和故障处理见 [运行与构建指南](development.md)。
+
+## 9. 完整 Demo 数据与运行
+
+初始化后，运行 `pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle` 准备固定哈希的数据。也可使用 `-LifestyleArchive` 指定自己的 ZIP。下载和模型都位于仓库本地忽略目录，不安装数据库服务、Python 环境或机器学习后台。
+
+两个终端分别运行 `scripts/dev.ps1 -Service backend` 和 `scripts/dev.ps1 -Service frontend`；访问 http://127.0.0.1:5173。四个演示账号及完整流程见 [README](../README.md) 与 [演示路线](demo-guide.md)。模型训练进度在后端终端出现；训练完成后才能看到完整实验。

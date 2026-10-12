@@ -25,7 +25,7 @@ Invoke-RestMethod http://127.0.0.1:8080/actuator/health
 Invoke-RestMethod http://127.0.0.1:5173/api/v1/system/info
 ```
 
-健康状态正常返回 UP；工程信息返回 SCAFFOLD / PLANNED。这不是业务风险评估。匿名访问尚未开放的业务路径返回 401 是当前安全设计，没有可登录账号。
+健康状态返回 UP，系统信息返回 DEMO。访问前端选择四类账号，初始密码 Campus2026!；业务请求需要会话，匿名访问返回 401。模型默认启动时训练，十万条实验需要等待后端日志完成。完整展示见 [演示路线](demo-guide.md)。
 
 ## 统一检查与构建
 
@@ -90,7 +90,13 @@ try {
 | SERVER_PORT | 8080 | 后端端口 |
 | DB_URL | jdbc:h2:file:./runtime/campus-mental-health | 相对后端运行目录的数据库 |
 | DB_USERNAME | sa | 默认本地数据库用户 |
-| DB_PASSWORD | 空 | 仅当前本地骨架默认；共享部署须重新设计 |
+| DB_PASSWORD | 空 | 仅本机文件数据库；公网部署需要额外设计 |
+| DEMO_ENABLED | true | false 时停用演示账号和首次数据播种 |
+| DEMO_PASSWORD | Campus2026! | 演示账号密码，只在后端终端设置 |
+| DEMO_DATASET | ../data/downloads/student-mental-health.csv | 小问卷与首次档案播种来源 |
+| ML_DATASET | ../data/downloads/student_lifestyle_100k.csv | 机器学习优先数据，不存在时回退小问卷 |
+| ML_AUTO_TRAIN | true | 启动训练；false 可在中心页面手动训练 |
+| ML_ARTIFACTS | ../models/artifacts | 本地模型与评估目录 |
 | VITE_API_BASE_URL | 空 | 前端使用同源 /api，开发代理指向 8080 |
 | VITE_DEV_PORT | 5173 | 本机前端开发端口 |
 | VITE_BACKEND_URL | http://127.0.0.1:8080 | 开发及 preview 的代理目标 |
@@ -129,10 +135,18 @@ Wrapper 可执行位保存在 Git 中；若通过 ZIP 下载丢失权限，可�
 | clone 后 JDK 路径无效 | 不复制其他人的 `.tools`；按自己的位置重新初始化 |
 | npm ENOTCACHED | 个人 npm 开了离线模式；初始化已带 --offline=false，手动 ci 也带该参数 |
 | Wrapper 或依赖获取失败 | 确认网络、代理及写权限；setup 的 Node 下载通道验证固定 SHA256；不要关闭 TLS 校验 |
-| 401 / H2 控制台不可见 | 骨架未实现登录，业务默认拒绝，控制台关闭；不要用全局 permitAll 绕过 |
+| 401 / H2 控制台不可见 | 先从前端登录；401 表示会话缺失，403 可能是角色/记录范围或 CSRF 不匹配。H2 控制台保持关闭 |
 | 前端显示后端未连接 | 确认后端启动、8080 可用和开发代理地址一致 |
 | 保存格式与检查冲突 | Java 用 Spotless，前端用项目 Prettier；重新生成外部工作区并重载 |
-| 生产构建提示大文件 | 当前完整注册 Element Plus 导致体积提醒，构建仍可通过；后续页面开发再做按需加载 |
+| 生产构建提示大文件 | 页面已按路由懒加载，图表使用 ECharts 组件模块；体积提醒不等于构建失败，按实际需求再优化 |
 | 旧终端环境没更新 | 编辑器重载后新建终端；改变工作区设置不会更新已存在终端 |
 
-更改 API、授权、数据模型或模型特征时同步相应文档与测试；当前骨架通过检查不代表完整业务已经验收。
+更改 API、授权、数据模型或模型特征时同步相应文档与测试；检查结果只覆盖当前测试范围，不代表已完成公网生产部署验收。
+
+## 数据准备与模型启动
+
+从仓库根目录运行 `pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle`。原始数据放在忽略的 `data/downloads/`，没有数据时业务仍可生成 36 份演示档案。详细实验入口见 [机器学习说明](machine-learning.md)。
+
+`app_meta` 保证档案只初始化一次；后来下载 CSV 不会覆盖已有业务数据。ML 每次启动读取当前数据，优先生活方式数据。首次没有大数据时添加文件后，可以在中心账号页面重新训练，不需要重置数据库。
+
+生产静态托管需与 API 同源（反向代理），保留会话 Cookie 和 CSRF；默认项目用于本地演示，不包含公网注册、真实通知网关或生产运维。

@@ -19,6 +19,8 @@ export default [
       'vue/html-closing-bracket-newline': 'off',
       'vue/html-indent': 'off',
       'vue/singleline-html-element-content-newline': 'off',
+      // Prettier owns Vue whitespace; avoid conflicting line-break rules.
+      'vue/multiline-html-element-content-newline': 'off',
     },
   },
 ];

@@ -13,15 +13,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class AuthController {
   private final DemoAccounts accounts;
-  public AuthController(DemoAccounts accounts) { this.accounts = accounts; }
+
+  public AuthController(DemoAccounts accounts) {
+    this.accounts = accounts;
+  }
 
   @GetMapping("/api/v1/auth/session")
-  public Map<String,Object> session(Authentication authentication, HttpServletRequest request) {
+  public Map<String, Object> session(Authentication authentication, HttpServletRequest request) {
     CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-    Map<String,Object> result = new LinkedHashMap<>();
+    Map<String, Object> result = new LinkedHashMap<>();
     result.put("csrfToken", token.getToken());
-    result.put("user", authentication == null || authentication instanceof AnonymousAuthenticationToken
-        ? null : accounts.get(authentication.getName()));
+    result.put(
+        "user",
+        authentication == null || authentication instanceof AnonymousAuthenticationToken
+            ? null
+            : accounts.get(authentication.getName()));
     return result;
   }
 }

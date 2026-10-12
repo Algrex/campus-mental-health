@@ -5,3 +5,9 @@ spring:
     password:
 server:
   port: 0
+
+app:
+  demo:
+    dataset: ./runtime/test-dataset-not-downloaded.csv
+  ml:
+    auto-train: false

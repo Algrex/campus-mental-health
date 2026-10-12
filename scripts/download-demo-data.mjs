@@ -1,0 +1,14 @@
+import {fileURLToPath} from 'node:url';
+import {dirname, resolve} from 'node:path';
+import {mkdir, writeFile} from 'node:fs/promises';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const destination = resolve(root, 'data/downloads');
+const lifestyle = process.argv.includes('--lifestyle');
+const source = lifestyle ? 'https://www.kaggle.com/api/v1/datasets/download/aldinwhyudii/student-depression-and-lifestyle-100k-data' : 'https://www.kaggle.com/api/v1/datasets/download/shariful07/student-mental-health';
+const response = await fetch(source, {signal: AbortSignal.timeout(60000)});
+if (!response.ok) throw new Error(`Kaggle download failed: HTTP ${response.status}`);
+const bytes = new Uint8Array(await response.arrayBuffer());
+if (bytes.length < 100 || bytes.length > 5000000 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error('Expected the small official dataset ZIP');
+await mkdir(destination, {recursive: true});
+await writeFile(resolve(destination, lifestyle ? 'student-lifestyle.zip' : 'student-mental-health.zip'), bytes);
+console.log(`Downloaded public dataset ZIP to ${destination}`);

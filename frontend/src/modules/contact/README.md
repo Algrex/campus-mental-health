@@ -1,3 +1,5 @@
 # contact
 
-后续在此维护模块页面、API 调用和交互测试；当前路由使用明确标注待开发的公共占位组件。公共布局和请求处理复用共享层，不在各模块重复实现。
+NotificationsView.vue 根据服务端收件人隔离显示联系人关怀提醒。
+
+当前页面集中在 `src/views`，共享组件位于 `src/components`，统一接口位于 `src/api/portal.js`。

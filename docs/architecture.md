@@ -1,20 +1,35 @@
-# 工程架构与模块边界
+# 系统架构
 
-项目是单仓库、单体 Java 后端与独立 Vue 前端。开发时 Vite 将 `/api` 与 `/actuator` 代理到本机后端；数据库使用 H2 文件模式，由 Flyway 迁移，Hibernate 仅验证结构。
+项目采用单仓库、模块化单体后端与独立 Vue 前端。浏览器通过同源 `/api` 访问服务，Vite 开发代理连接本机 Spring Boot；H2 文件库由 Flyway 迁移，Hibernate 仅验证结构。
 
-| 模块 | 职责 |
+```mermaid
+flowchart LR
+  U[四类用户] --> V[Vue / 路由与共享组件]
+  V --> S[Spring Security / Session / CSRF]
+  S --> P[PortalController / DTO 校验]
+  P --> B[PortalService / 记录范围与业务事务]
+  B --> H[(H2 / Flyway)]
+  S --> M[MachineLearningController]
+  M --> W[Weka / 训练·验证·推理]
+  D[公开 CSV / 固定 SHA256] --> W
+  W --> A[忽略的模型与评估文件]
+```
+
+| 实现位置 | 职责 |
 | --- | --- |
-| auth、config、common、system | 账号、安全、公共错误、工程信息与启动 |
-| students、assessments、behavior、academics、checkin | 档案、量表与多源记录、数据库设计 |
-| risk | 数据处理、特征、训练/推理、异常与风险 |
-| alerts、notifications、intervention | 预警、通知队列、咨询、干预和复评 |
-| frontend/src/modules/auth、student | 公共前端与学生端 |
-| frontend/src/modules/workspace、contact | 工作端、联系人页与流程回归 |
+| auth、config | Cookie 会话登录、退出、CSRF、认证入口 |
+| common | 可读错误响应和输入校验失败处理 |
+| demo | 固定演示账号、CSV 解析、首次数据初始化 |
+| portal | 档案、测评、打卡、规则分级、预警、干预与站内通知 |
+| ml | 两种数据模式、Weka 训练/评估/推理、模型与指标产物 |
+| system | 匿名健康与 Demo 元数据 |
+| frontend/src/views | 工作台、档案、模型实验、个案、学生与联系人页面 |
+| frontend/src/components | 图表、状态反馈、学生抽屉、个案抽屉、图标与分级徽标 |
 
-后端模块预留 controller、service、repository、dto、domain 包。已有学生实体与 Repository 是持久化基础，没有自动暴露为 REST API。业务事务放在 Service 中，权限同时校验角色与记录归属。
+服务端对角色和记录归属同时授权：中心全校、辅导员本学院、学生本人、联系人自己的最小通知。前端导航仅改善体验，不作为安全边界。所有写请求携带 CSRF 令牌；登录后重新获取令牌，退出销毁会话。
 
-当前只实现 `/actuator/health` 和 `/api/v1/system/info`，后者返回工程阶段和模块负责人。所有业务模块状态为 `PLANNED`，不代表可用功能。
+业务链路：自评/打卡 → 事务内记录 → 规则评估 → 非常规关注触发预警 → 站内提醒 → 受理 → 干预记录 → 人工复评 → 关闭。测评有请求幂等键，打卡有学生/日期唯一约束，已有未关闭预警仅在等级升级时重复提醒。
 
-前端共用布局、请求层、路由和占位组件。后续成员将各自业务页面放入对应 `modules` 目录并替换路由组件；导航本身不提供授权保护，后端是权限边界。
+机器学习是独立实验通道。用原始公开数据建立监督模型，预测数据集标签；不以合成平台历史训练，也不自动用模型概率创建四级预警。这样保留清晰的标签语义和可解释的人工关怀流程。
 
-持久化、业务模块、前端页面和模型分别推进，关键链路依次为：数据入库 → 风险评估 → 预警投递 → 受理干预 → 随访复评。每步由主责成员提供真实接口与测试，再完成端到端联调。
+已保留的学生 JPA 实体/Repository 支持基础持久化测试；实际 Demo 查询由 JdbcTemplate 执行。其他课程预留包不暴露占位接口。模型仅使用本次进程训练对象，不从任意上传文件反序列化。
