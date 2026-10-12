@@ -2,14 +2,14 @@
 
 项目是单仓库、单体 Java 后端与独立 Vue 前端。开发时 Vite 将 `/api` 与 `/actuator` 代理到本机后端；数据库使用 H2 文件模式，由 Flyway 迁移，Hibernate 仅验证结构。
 
-| 模块 | 负责人 | 职责 |
-| --- | --- | --- |
-| auth、config、common、system | A | 账号、安全、公共错误、工程信息与启动 |
-| students、assessments、behavior、academics、checkin | B | 档案、量表与多源记录、数据库设计 |
-| risk | C | 数据处理、特征、训练/推理、异常与风险 |
-| alerts、notifications、intervention | D | 预警、通知队列、咨询、干预和复评 |
-| frontend/src/modules/auth、student | E | 公共前端与学生端 |
-| frontend/src/modules/workspace、contact | F | 工作端、联系人页与流程回归 |
+| 模块 | 职责 |
+| --- | --- |
+| auth、config、common、system | 账号、安全、公共错误、工程信息与启动 |
+| students、assessments、behavior、academics、checkin | 档案、量表与多源记录、数据库设计 |
+| risk | 数据处理、特征、训练/推理、异常与风险 |
+| alerts、notifications、intervention | 预警、通知队列、咨询、干预和复评 |
+| frontend/src/modules/auth、student | 公共前端与学生端 |
+| frontend/src/modules/workspace、contact | 工作端、联系人页与流程回归 |
 
 后端模块预留 controller、service、repository、dto、domain 包。已有学生实体与 Repository 是持久化基础，没有自动暴露为 REST API。业务事务放在 Service 中，权限同时校验角色与记录归属。
 

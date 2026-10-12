@@ -1,0 +1,182 @@
+{
+  "folders": [],
+  "settings": {
+    "files.encoding": "utf8",
+    "files.eol": "\n",
+    "editor.tabSize": 2,
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.exclusions": [
+      "**/node_modules/**",
+      "**/.tools/**",
+      "**/target/**"
+    ],
+    "java.format.enabled": false,
+    "maven.executable.preferMavenWrapper": true,
+    "eslint.workingDirectories": [
+      {"directory": "frontend", "changeProcessCWD": true}
+    ],
+    "eslint.validate": ["javascript", "vue"],
+    "prettier.requireConfig": true,
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.formatOnSave": true
+    },
+    "[vue]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.formatOnSave": true
+    },
+    "[css]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.formatOnSave": true
+    },
+    "files.watcherExclude": {
+      "**/.tools/**": true,
+      "**/node_modules/**": true,
+      "**/target/**": true,
+      "**/dist/**": true
+    },
+    "search.exclude": {
+      "**/.tools": true,
+      "**/node_modules": true,
+      "**/target": true,
+      "**/dist": true
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Campus: 启动后端",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "${workspaceFolder:campus-mental-health}/scripts/dev.ps1",
+          "-Service",
+          "backend"
+        ],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}"},
+        "isBackground": true,
+        "problemMatcher": {
+          "owner": "campus-java",
+          "fileLocation": "absolute",
+          "pattern": {
+            "regexp": "^\\[ERROR\\]\\s+(.+):\\[(\\d+),(\\d+)\\]\\s+(.+)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "message": 4
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "Starting CampusMentalHealthApplication",
+            "endsPattern": "Started CampusMentalHealthApplication"
+          }
+        },
+        "presentation": {"panel": "dedicated", "group": "campus-dev"}
+      },
+      {
+        "label": "Campus: 启动前端",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "${workspaceFolder:campus-mental-health}/scripts/dev.ps1",
+          "-Service",
+          "frontend"
+        ],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}"},
+        "isBackground": true,
+        "problemMatcher": {
+          "owner": "campus-vite",
+          "pattern": {
+            "regexp": "^(.+):(\\d+):(\\d+):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "message": 4
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "VITE",
+            "endsPattern": "Local:.*127\\.0\\.0\\.1:5173"
+          }
+        },
+        "presentation": {"panel": "dedicated", "group": "campus-dev"}
+      },
+      {
+        "label": "Campus: 启动前后端",
+        "dependsOn": ["Campus: 启动后端", "Campus: 启动前端"],
+        "dependsOrder": "parallel",
+        "problemMatcher": []
+      },
+      {
+        "label": "Campus: 检查与构建",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "${workspaceFolder:campus-mental-health}/scripts/check.ps1"
+        ],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}"},
+        "problemMatcher": [],
+        "group": {"kind": "build", "isDefault": true}
+      },
+      {
+        "label": "Campus: 安装前端锁定依赖",
+        "type": "process",
+        "command": "npm.cmd",
+        "args": ["ci", "--offline=false", "--cache", "../.tools/npm-cache"],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}/frontend"},
+        "problemMatcher": []
+      },
+      {
+        "label": "Campus: 格式化 Java",
+        "type": "process",
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "${workspaceFolder:campus-mental-health}/scripts/format-java.ps1"
+        ],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}"},
+        "problemMatcher": []
+      },
+      {
+        "label": "Campus: 格式化前端",
+        "type": "process",
+        "command": "npm.cmd",
+        "args": ["run", "format"],
+        "options": {"cwd": "${workspaceFolder:campus-mental-health}/frontend"},
+        "problemMatcher": []
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "java",
+        "name": "Campus: 调试 Java 后端",
+        "request": "launch",
+        "mainClass": "com.algrex.campus.CampusMentalHealthApplication",
+        "projectName": "campus-mental-health-backend",
+        "cwd": "${workspaceFolder:campus-mental-health}/backend",
+        "console": "integratedTerminal",
+        "vmArgs": "-Dfile.encoding=UTF-8",
+        "shortenCommandLine": "argfile"
+      },
+      {
+        "type": "pwa-chrome",
+        "name": "Campus: 调试 Vue 前端",
+        "request": "launch",
+        "url": "http://127.0.0.1:5173",
+        "webRoot": "${workspaceFolder:campus-mental-health}/frontend",
+        "preLaunchTask": "Campus: 启动前端"
+      }
+    ]
+  }
+}
