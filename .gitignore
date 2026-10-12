@@ -22,6 +22,7 @@ application-local.yml
 *.trace.db
 *.h2.db
 data/private/**
+data/downloads/
 !data/private/.gitkeep
 models/artifacts/**
 !models/artifacts/.gitkeep
