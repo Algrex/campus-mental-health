@@ -6,7 +6,7 @@
 
 | 数据 | 样本 | 来源/许可 | 用途 |
 | --- | --- | --- | --- |
-| Student Mental health | 101 条 | [Shariful07 / Kaggle](https://www.kaggle.com/datasets/shariful07/student-mental-health)，CC0 | 匿名问卷小样本，模型回退模式；部分属性映射为业务演示档案 |
+| Student Mental health | 101 条 | [Shariful07 / Kaggle](https://www.kaggle.com/datasets/shariful07/student-mental-health)，CC0 | 匿名问卷小样本，独立实验；部分属性映射为业务演示档案 |
 | Student Depression & Lifestyle | 100,000 条 | [Aldinwhyudii / Kaggle](https://www.kaggle.com/datasets/aldinwhyudii/student-depression-and-lifestyle-100k-data)，MIT | 作者明确说明为程序生成的合成数据，主要用于三模型对比 |
 
 十万条 CSV 在本机核对为 89,938 条 False、10,062 条 True，无缺失；Student_ID 全部唯一。该标签不等同于 PHQ-9 结果或四级预警，平台历史也不参与建模。合成数据可以验证工程流程和算法比较，不能证明真实人群中的预测效力。
@@ -21,7 +21,7 @@ student_lifestyle_100k.csv
 9dc57047a826daff9a442a9975fb8566339335bc8f351ae8189794aa89fc7b6d
 ```
 
-脚本下载后核对固定哈希。`ML_DATASET` 可以指定模型 CSV；默认优先生活方式数据，不存在时回退到 `DEMO_DATASET` 指定的小问卷。源码、模型 API 和报告记录数据模式、哈希、许可与标签语义。
+脚本下载后核对固定哈希。`ML_DATASET` 可以指定模型 CSV；默认优先生活方式数据，两份文件存在时均自动训练。模型页面可切换独立实验；生活方式文件不存在时回退到 `DEMO_DATASET` 指定的小问卷。源码、模型 API 和报告记录数据模式、哈希、许可与标签语义。
 
 ## 预处理与特征
 
@@ -66,17 +66,17 @@ student_lifestyle_100k.csv
 - 混淆矩阵行是实际 No/Yes，列是预测 No/Yes。
 - 模型解释展示训练模型的逻辑回归系数、J48 规则或森林结构摘要；不把统计系数说成个人病因。
 
-模型 API 和导出的 `evaluation.json` 是实际实验结果。仓库不预置虚构高分，也不自动选择“临床最好”的算法。
+各数据集的模型 API 和导出的 `evaluation.json` 是实际实验结果。仓库不预置虚构高分，也不自动选择“临床最好”的算法。
 
 ## 运行与产物
 
 ```powershell
 pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle
-pwsh -NoProfile -File scripts/dev.ps1 -Service backend
+python start.py
 ```
 
-模型默认启动时训练；中心账号可在“模型实验室”重新训练，辅导员只读实验和手动推理。`ML_AUTO_TRAIN=false` 可跳过启动训练，之后手动运行；`ML_ARTIFACTS` 可设置产物目录。
+模型默认启动时分别训练两份可用数据；中心账号可在“模型实验室”切换并重新训练指定数据集，辅导员只读实验和手动推理。`ML_AUTO_TRAIN=false` 可跳过启动训练，之后手动运行；`ML_ARTIFACTS` 可设置产物目录。
 
-`models/artifacts/` 包含 `evaluation.json`、`training.arff`、大数据模式的 `validation.arff`/`testing.arff`、每个算法的 `.model`。全部被 Git 忽略。运行中只使用本进程训练的模型对象，不加载任意上传的序列化文件。清理这些产物不会删除业务数据库；重新训练可恢复。
+`models/artifacts/survey/` 与 `models/artifacts/lifestyle/` 分别包含 `evaluation.json`、`training.arff`、大数据模式的 `validation.arff`/`testing.arff`、每个算法的 `.model`。全部被 Git 忽略。运行中只使用本进程训练的模型对象，不加载任意上传的序列化文件。清理这些产物不会删除业务数据库；重新训练可恢复。
 
 实现依据：[Weka Logistic](https://weka.sourceforge.io/doc.stable-3-8/weka/classifiers/functions/Logistic.html)、[J48](https://weka.sourceforge.io/doc.stable-3-8/weka/classifiers/trees/J48.html)、[RandomForest](https://weka.sourceforge.io/doc.stable-3-8/weka/classifiers/trees/RandomForest.html)、[FilteredClassifier](https://weka.sourceforge.io/doc.stable-3-8/weka/classifiers/meta/FilteredClassifier.html)、[Evaluation](https://weka.sourceforge.io/doc.stable-3-8/weka/classifiers/Evaluation.html)。

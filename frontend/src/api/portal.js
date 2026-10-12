@@ -1,8 +1,9 @@
 import {getJson, post, put} from './http.js';
 const base = '/api/v1';
 export const api = {
-  mlSummary: () => getJson(`${base}/ml/summary`),
-  mlTrain: () => post(`${base}/ml/train`),
+  mlSummary: (dataset = '') =>
+    getJson(`${base}/ml/summary?${new URLSearchParams({dataset})}`),
+  mlTrain: (dataset) => post(`${base}/ml/train`, {dataset}),
   mlPredict: (data) => post(`${base}/ml/predict`, data),
   dashboard: () => getJson(`${base}/dashboard`),
   students: (params = {}) =>

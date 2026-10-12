@@ -56,6 +56,31 @@ class MachineLearningTest {
                 new PredictionDraft(
                     20, "Female", null, null, 3.25, null, "Science", 7.5, 5.0, 3.0, 90, 4)))
         .containsKey("predictions");
+    Path small = directory.resolve("survey-second.csv");
+    StringBuilder survey =
+        new StringBuilder(
+            "Timestamp,Choose your gender,Age,What is your course?,Your current year of Study,What is your CGPA?,Marital status,Do you have Depression?,Do you have Anxiety?,Do you have Panic attack?,Did you seek any specialist for a treatment?\n");
+    for (int index = 0; index < 30; index++) {
+      survey
+          .append("8/7/2020,Female,20,BCS,year 2,3.00 - 3.49,No,")
+          .append(index % 3 == 0 ? "Yes" : "No")
+          .append(",No,No,No\n");
+    }
+    Files.writeString(small, survey);
+    MachineLearningService dual =
+        new MachineLearningService(
+            file.toString(), small.toString(), directory.resolve("dual").toString(), true);
+    dual.run(null);
+    assertThat(dual.summary("survey").get("dataset"))
+        .isNotEqualTo(dual.summary("lifestyle").get("dataset"));
+    assertThat(dual.summary().get("dataset")).isEqualTo(dual.summary("lifestyle").get("dataset"));
+    assertThat(
+            dual.predict(
+                new PredictionDraft(
+                    20, "Female", null, null, 3.25, null, "Science", 7.5, 5.0, 3.0, 90, 4)))
+        .containsKey("predictions");
+    assertThat(Files.isRegularFile(directory.resolve("dual/survey/evaluation.json"))).isTrue();
+    assertThat(Files.isRegularFile(directory.resolve("dual/lifestyle/evaluation.json"))).isTrue();
     assertThatThrownBy(
             () -> service.predict(new PredictionDraft(20, "Female", "Other", 2, 3.25, "No")))
         .isInstanceOf(IllegalArgumentException.class);
@@ -97,9 +122,9 @@ class MachineLearningTest {
       double[][] matrix = (double[][]) models.get(index).get("confusionMatrix");
       assertThat(matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1]).isEqualTo(30);
     }
-    assertThat(Files.readString(artifacts.resolve("evaluation.json")))
+    assertThat(Files.readString(artifacts.resolve("survey/evaluation.json")))
         .contains("sha256", "folds", "seed");
-    assertThat(Files.isRegularFile(artifacts.resolve("j48.model"))).isTrue();
+    assertThat(Files.isRegularFile(artifacts.resolve("survey/j48.model"))).isTrue();
     Map<String, Object> predicted =
         service.predict(new PredictionDraft(20, "Female", "Computing", 2, 3.25, "No"));
     @SuppressWarnings("unchecked")

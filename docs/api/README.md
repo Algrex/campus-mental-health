@@ -28,9 +28,9 @@
 | GET /follow-ups | 中心/辅导员 | 范围内干预与下次随访记录 |
 | GET /notifications | 四类已登录用户 | 只返回自己账号收件箱 |
 | POST /notifications/{uuid}/read | 收件人本人 | 标记已读 |
-| GET /ml/summary | 中心/辅导员 | 来源、特征、数据划分、参数、指标、ROC、模型解释 |
-| POST /ml/train | 中心 | 重新读取当前 CSV，执行训练与评估，body `{}` |
-| POST /ml/predict | 中心/辅导员 | 手工实验特征，返回模型概率与验证阈值后的标签 |
+| GET /ml/summary?dataset=survey/lifestyle | 中心/辅导员 | 来源、特征、数据划分、参数、指标、ROC、模型解释 |
+| POST /ml/train | 中心 | 训练指定数据，body `{dataset:"survey"}` 或 `{dataset:"lifestyle"}`；`{}` 使用默认数据集 |
+| POST /ml/predict | 中心/辅导员 | `dataset` 加对应特征，返回该数据集模型的概率与操作阈值标签 |
 
 `GET /actuator/health` 匿名，位于上述前缀之外，仅返回健康状态。
 
@@ -49,3 +49,5 @@ PHQ 总分 <10 常规关注、10–14 适度、15–19 重点、>=20 优先联�
 生活方式模式（9 特征）：`age` 16–80，`gender` Female/Male，`department` Science/Engineering/Arts/Medical/Business，`cgpa` 0–4，`sleepHours/studyHours/socialMediaHours` 0–24，`physicalActivity` 0–10080 分钟/周，`stressLevel` 0–10。所有特征必填。
 
 小问卷模式：`age`、`gender`、`courseGroup` Engineering/Computing/Business/Other、`studyYear` 1–4、`cgpa` 区间中点、`married` No/Yes。实际输入应接近训练分布；数值合法不代表模型对超出样本分布的情况可靠。模型输入不写入个人档案，也不生成预警。
+
+两套模型、特征模式、操作阈值和产物独立维护。`dataset` 省略时使用默认实验，不在两份数据之间混用训练对象。

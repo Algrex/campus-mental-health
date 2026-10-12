@@ -24,17 +24,20 @@ public class MachineLearningController {
   }
 
   @GetMapping("/summary")
-  public Map<String, Object> summary(Authentication authentication) {
+  public Map<String, Object> summary(
+      Authentication authentication, @RequestParam(defaultValue = "") String dataset) {
     portal.staff(accounts.get(authentication.getName()));
-    return service.summary();
+    return service.summary(dataset);
   }
 
   @PostMapping("/train")
-  public Map<String, Object> train(Authentication authentication) throws Exception {
+  public Map<String, Object> train(
+      Authentication authentication, @Valid @RequestBody(required = false) TrainDraft draft)
+      throws Exception {
     if (!accounts.get(authentication.getName()).role().equals("CENTER")) {
       throw new AccessDeniedException("center required");
     }
-    return service.train();
+    return service.train(draft == null ? null : draft.dataset());
   }
 
   @PostMapping("/predict")
@@ -43,6 +46,8 @@ public class MachineLearningController {
     portal.staff(accounts.get(authentication.getName()));
     return service.predict(draft);
   }
+
+  public record TrainDraft(@Pattern(regexp = "survey|lifestyle") String dataset) {}
 
   public record PredictionDraft(
       @NotNull @Min(16) @Max(80) Integer age,
@@ -56,7 +61,37 @@ public class MachineLearningController {
       @DecimalMin("0") @DecimalMax("24") Double studyHours,
       @DecimalMin("0") @DecimalMax("24") Double socialMediaHours,
       @Min(0) @Max(10080) Integer physicalActivity,
-      @Min(0) @Max(10) Integer stressLevel) {
+      @Min(0) @Max(10) Integer stressLevel,
+      @Pattern(regexp = "survey|lifestyle") String dataset) {
+    public PredictionDraft(
+        Integer age,
+        String gender,
+        String courseGroup,
+        Integer studyYear,
+        Double cgpa,
+        String married,
+        String department,
+        Double sleepHours,
+        Double studyHours,
+        Double socialMediaHours,
+        Integer physicalActivity,
+        Integer stressLevel) {
+      this(
+          age,
+          gender,
+          courseGroup,
+          studyYear,
+          cgpa,
+          married,
+          department,
+          sleepHours,
+          studyHours,
+          socialMediaHours,
+          physicalActivity,
+          stressLevel,
+          null);
+    }
+
     public PredictionDraft(
         Integer age,
         String gender,
@@ -64,7 +99,20 @@ public class MachineLearningController {
         Integer studyYear,
         Double cgpa,
         String married) {
-      this(age, gender, courseGroup, studyYear, cgpa, married, null, null, null, null, null, null);
+      this(
+          age,
+          gender,
+          courseGroup,
+          studyYear,
+          cgpa,
+          married,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null);
     }
   }
 }

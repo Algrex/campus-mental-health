@@ -13,6 +13,7 @@ const training = ref(false);
 const predicting = ref(false);
 const prediction = ref(null);
 const explanation = ref('j48');
+const selectedDataset = ref('');
 const draft = ref({
   age: 20,
   gender: 'Female',
@@ -28,7 +29,8 @@ const draft = ref({
   stressLevel: 4,
 });
 const {busy, error, reload} = useLoad(async () => {
-  data.value = await api.mlSummary();
+  data.value = await api.mlSummary(selectedDataset.value);
+  if (data.value.dataset) selectedDataset.value = data.value.dataset.type;
 });
 function percent(value) {
   return value === null || value === undefined ? '—' : (value * 100).toFixed(1);
@@ -88,7 +90,7 @@ const roc = computed(() => ({
 async function train() {
   training.value = true;
   try {
-    data.value = await api.mlTrain();
+    data.value = await api.mlTrain(selectedDataset.value || 'lifestyle');
     prediction.value = null;
     ElMessage.success('模型训练与评估已完成');
   } catch (e) {
@@ -100,7 +102,10 @@ async function train() {
 async function predict() {
   predicting.value = true;
   try {
-    prediction.value = await api.mlPredict(draft.value);
+    prediction.value = await api.mlPredict({
+      ...draft.value,
+      dataset: selectedDataset.value,
+    });
   } catch (e) {
     ElMessage.error(e.message);
   } finally {
@@ -113,7 +118,7 @@ function download() {
   );
   const link = document.createElement('a');
   link.href = url;
-  link.download = '模型评估报告.json';
+  link.download = `${selectedDataset.value}-模型评估报告.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -126,6 +131,20 @@ function download() {
       <p>用透明的实验设计，理解数据与预测的关系。</p>
     </div>
     <div class="action-row">
+      <select
+        v-model="selectedDataset"
+        aria-label="选择实验数据集"
+        :disabled="busy || training || predicting"
+        @change="
+          prediction = null;
+          explanation = 'j48';
+          reload();
+        "
+      >
+        <option v-if="!selectedDataset" value="" disabled>选择实验数据</option>
+        <option value="lifestyle">生活方式 · 100,000 条</option>
+        <option value="survey">匿名问卷 · 101 条</option>
+      </select>
       <button v-if="data?.status === 'READY'" class="btn" @click="download">
         <Icon name="download" :size="17" />导出评估</button
       ><button
@@ -340,7 +359,7 @@ function download() {
             </article>
             <article>
               <span class="timeline-dot"></span
-              ><strong>验证阈值 → 独立评估</strong>
+              ><strong>模型评估 → 交互推理</strong>
               <p>
                 {{
                   data.validation.trainRows
@@ -467,7 +486,7 @@ function download() {
               <div>
                 <strong>{{ row.name }}</strong
                 ><small
-                  >预测标签 {{ row.predictedClass }} · 验证阈值
+                  >预测标签 {{ row.predictedClass }} · 判定阈值
                   {{ row.threshold }}</small
                 >
               </div>

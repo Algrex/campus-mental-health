@@ -1,152 +1,82 @@
-# 运行、构建与故障处理
+# 运行与构建
 
-本文命令从仓库根目录开始，不依赖仓库父目录。首次使用先完成 [环境初始化](development-environment.md)。
+## 统一启动
 
-## Windows 日常开发
+```bash
+python start.py
+```
 
-启动后端：
+默认同时启动后端 8080 和前端 5173，打开浏览器。首次缺少前端依赖时执行锁定安装；后端 JAR 缺失或源码较新时自动构建。启动只打包，不自动运行完整测试；日常检查单独执行 `scripts/check.ps1`。
+
+```bash
+python start.py --no-browser
+python start.py --restart
+python start.py --stop
+python start.py --backend-port 8081 --frontend-port 5174
+```
+
+启动终端按 Ctrl+C 同时停止两个子进程。`--stop` 核对已记录的 PID 与启动时间，不终止其他项目进程。若默认端口已经运行本项目，直接打开已有服务；其他应用占用端口时报错，可显式换端口。
+
+当前日志为 `.tools/logs/backend.log` 和 `frontend.log`；自动构建日志为 `build.log`，每次启动覆盖同名日志，不无限积累历史文件。后端用 `.tools/demo-run/app.jar` 运行副本，避免锁住 Maven 构建产物。
+
+## 独立开发服务
 
 ```powershell
 pwsh -NoProfile -File scripts/dev.ps1 -Service backend
-```
-
-另开终端启动前端：
-
-```powershell
 pwsh -NoProfile -File scripts/dev.ps1 -Service frontend
 ```
 
-默认监听 `127.0.0.1`，后端 8080、前端 5173。停止时在对应终端按 Ctrl+C；Windows 批处理询问是否终止时确认终止。不要结束其他项目的 Java/Node 进程。
+两条命令在不同终端运行。前端使用同源 `/api` 代理后端，会话 Cookie 与 CSRF 令牌由请求层处理。健康检查为 `/actuator/health`，系统信息为 `/api/v1/system/info`。
 
-用浏览器访问前端或用 PowerShell 检查：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8080/actuator/health
-Invoke-RestMethod http://127.0.0.1:5173/api/v1/system/info
-```
-
-健康状态返回 UP，系统信息返回 DEMO。访问前端选择四类账号，初始密码 Campus2026!；业务请求需要会话，匿名访问返回 401。模型默认启动时训练，十万条实验需要等待后端日志完成。完整展示见 [演示路线](demo-guide.md)。
-
-## 统一检查与构建
+## 构建与检查
 
 ```powershell
 pwsh -NoProfile -File scripts/check.ps1
 ```
 
-依次执行：后端 `verify`（测试、打包、Google Java 格式检查），前端 `lint`、`test`、`format:check`、`build`。失败时停止并返回非零结果。
+执行后端 `verify`，前端 lint、测试、Prettier 检查和生产构建。格式化入口：`scripts/format-java.ps1`、`npm --prefix frontend run format`。
 
-仅后端检查或运行其他 Maven goal：
+后端产物为 `backend/target/campus-mental-health-backend-0.0.1-SNAPSHOT.jar`；前端产物为 `frontend/dist/`。手动 JAR 启动时从 `backend` 目录执行，保持数据库及数据集相对路径一致。
 
-```powershell
-# 在仓库根目录，载入工具函数；只影响当前进程。
-. ./scripts/common.ps1
-Set-ProjectJava
-Push-Location backend
-try {
-  ./mvnw.cmd "-Dmaven.repo.local=$taskRepoRoot/.tools/m2" verify
-} finally {
-  Pop-Location
-}
-```
-
-Java 格式化使用 `pwsh -NoProfile -File scripts/format-java.ps1`。前端可独立运行：
-
-```powershell
-npm.cmd --prefix frontend run lint
-npm.cmd --prefix frontend test
-npm.cmd --prefix frontend run format
-npm.cmd --prefix frontend run format:check
-npm.cmd --prefix frontend run build
-```
-
-新增或修改依赖时由负责人更新依赖清单和锁文件；正常复现用 `npm ci`，不要用 `npm install` 无意更新锁定依赖。
-
-## 使用构建产物
-
-后端可运行 JAR：`backend/target/campus-mental-health-backend-0.0.1-SNAPSHOT.jar`。
-
-```powershell
-. ./scripts/common.ps1
-Set-ProjectJava
-Push-Location backend
-try {
-  & (Join-Path $env:JAVA_HOME 'bin/java.exe') -jar target/campus-mental-health-backend-0.0.1-SNAPSHOT.jar
-} finally {
-  Pop-Location
-}
-```
-
-从 `backend` 运行保证相对数据库路径一致。没有全局 JAVA_HOME 时，不要直接假定其他终端里的 `java` 能找到项目 JDK。
-
-前端静态构建在 `frontend/dist`。可运行 `npm.cmd --prefix frontend run preview` 本机预览，默认 4173；当前配置的 preview 会继承开发代理，因此后端启动后可本机联调。这不会自动打包后端，也不是生产托管。正式静态服务器需要为 `/api`、`/actuator` 设置反向代理，或者在构建前设置 `VITE_API_BASE_URL` 并设计后端跨域与授权。[Vite 官方 preview 配置](https://vite.dev/config/preview-options)说明其代理继承关系。
-
-前端使用 history 路由，正式托管需将未命中的页面路由回退到 index.html。现阶段没有完整生产部署脚本，不把预览命令当成生产部署。
-
-## 运行配置与数据
-
-| 配置 | 默认值 | 说明 |
-| --- | --- | --- |
-| SERVER_ADDRESS | 127.0.0.1 | 后端监听地址 |
-| SERVER_PORT | 8080 | 后端端口 |
-| DB_URL | jdbc:h2:file:./runtime/campus-mental-health | 相对后端运行目录的数据库 |
-| DB_USERNAME | sa | 默认本地数据库用户 |
-| DB_PASSWORD | 空 | 仅本机文件数据库；公网部署需要额外设计 |
-| DEMO_ENABLED | true | false 时停用演示账号和首次数据播种 |
-| DEMO_PASSWORD | Campus2026! | 演示账号密码，只在后端终端设置 |
-| DEMO_DATASET | ../data/downloads/student-mental-health.csv | 小问卷与首次档案播种来源 |
-| ML_DATASET | ../data/downloads/student_lifestyle_100k.csv | 机器学习优先数据，不存在时回退小问卷 |
-| ML_AUTO_TRAIN | true | 启动训练；false 可在中心页面手动训练 |
-| ML_ARTIFACTS | ../models/artifacts | 本地模型与评估目录 |
-| VITE_API_BASE_URL | 空 | 前端使用同源 /api，开发代理指向 8080 |
-| VITE_DEV_PORT | 5173 | 本机前端开发端口 |
-| VITE_BACKEND_URL | http://127.0.0.1:8080 | 开发及 preview 的代理目标 |
-
-后端变量在启动终端通过 `$env:变量名` 设置。前端 `.env.example` 是样例，需要时复制到不提交的 `.env.local`；前端变量在开发启动或构建时读取，不能在其中保存密码或私密令牌。
-
-默认 strictPort 不自动跳到其他端口。端口占用时可设置本地变量，不修改共享源码，例如后端终端设置 `$env:SERVER_PORT='8081'`，前端终端设置 `$env:VITE_DEV_PORT='5174'` 和 `$env:VITE_BACKEND_URL='http://127.0.0.1:8081'`，再启动各自脚本。生成 VS Code 工作区时可加 `-BackendPort 8081 -FrontendPort 5174`，同步任务、代理及浏览器调试地址。
-
-H2 文件在 `backend/runtime`，测试使用独立内存库。备份文件数据库前停止写入或关闭服务；不得在未验证完整性时把在线复制当作可靠恢复方案。不要把数据库文件或真实学生资料提交 Git。
-
-## Linux / macOS
-
-准备平台对应 JDK 21、Node 24.15.0/npm 11.12.1，设置本机 JAVA_HOME；Windows setup/configure 脚本不在这些平台使用。命令行构建：
+Linux/macOS 手动构建：
 
 ```bash
 cd backend
 ./mvnw --batch-mode verify
-# 运行后端时用 ./mvnw spring-boot:run
 cd ../frontend
 npm ci --offline=false
-npm run lint
-npm test
-npm run format:check
-npm run build
-# 运行前端时用 npm run dev
+npm run lint && npm test && npm run format:check && npm run build
 ```
 
-Wrapper 可执行位保存在 Git 中；若通过 ZIP 下载丢失权限，可执行 `chmod +x backend/mvnw`。平台不同，工具目录、扩展路径和生成产物也不同。CI 使用 Linux 验证 Java/前端兼容性；它不等于已验证每个桌面系统的图形调试器。
+`vite preview` 可本机预览生产静态产物，正式静态托管需 history 路由回退和同源 API 反向代理。
 
-## 常见问题
+## 配置项
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| SERVER_ADDRESS / SERVER_PORT | 127.0.0.1 / 8080 | 后端监听 |
+| VITE_DEV_PORT / VITE_BACKEND_URL | 5173 / http://127.0.0.1:8080 | 前端与开发代理 |
+| DB_URL | jdbc:h2:file:./runtime/campus-mental-health | H2 文件库 |
+| DB_USERNAME / DB_PASSWORD | sa / 空 | 本机嵌入式数据库 |
+| DEMO_ENABLED / DEMO_PASSWORD | true / Campus2026! | 演示账号与初始化 |
+| DEMO_DATASET | ../data/downloads/student-mental-health.csv | 小问卷与首次档案映射 |
+| ML_DATASET | ../data/downloads/student_lifestyle_100k.csv | 生活方式实验数据 |
+| ML_AUTO_TRAIN | true | 启动时训练可用的两份数据 |
+| ML_ARTIFACTS | ../models/artifacts | 按 survey/lifestyle 分开保存产物 |
+
+启动脚本的端口参数优先于对应环境变量。其他后端变量从启动终端继承，前端不存放账号密码或私密令牌。
+
+## 数据与故障处理
+
+两份模型数据通过 `scripts/download-demo-data.ps1 -IncludeLifestyle` 准备。数据缺失不阻止业务 Demo；模型页面可切换数据并分别重新训练。业务档案只播种一次，后来下载 CSV 不会覆盖已有操作。
+
+H2 备份前停止后端，再复制 `backend/runtime` 数据文件。清理下载数据、模型或缓存不等于清理数据库。旧中间文件采用可恢复归档，归档清单在 `.tools/archive`。
 
 | 现象 | 处理 |
 | --- | --- |
-| 找不到 pwsh | 安装 PowerShell 7，重新打开终端；不是调用 powershell.exe |
-| Java 版本不是 21 | 使用 setup.ps1 -JdkHome 明确选择；检查 `.tools/environment.local.json` 中路径 |
-| clone 后 JDK 路径无效 | 不复制其他人的 `.tools`；按自己的位置重新初始化 |
-| npm ENOTCACHED | 个人 npm 开了离线模式；初始化已带 --offline=false，手动 ci 也带该参数 |
-| Wrapper 或依赖获取失败 | 确认网络、代理及写权限；setup 的 Node 下载通道验证固定 SHA256；不要关闭 TLS 校验 |
-| 401 / H2 控制台不可见 | 先从前端登录；401 表示会话缺失，403 可能是角色/记录范围或 CSRF 不匹配。H2 控制台保持关闭 |
-| 前端显示后端未连接 | 确认后端启动、8080 可用和开发代理地址一致 |
-| 保存格式与检查冲突 | Java 用 Spotless，前端用项目 Prettier；重新生成外部工作区并重载 |
-| 生产构建提示大文件 | 页面已按路由懒加载，图表使用 ECharts 组件模块；体积提醒不等于构建失败，按实际需求再优化 |
-| 旧终端环境没更新 | 编辑器重载后新建终端；改变工作区设置不会更新已存在终端 |
-
-更改 API、授权、数据模型或模型特征时同步相应文档与测试；检查结果只覆盖当前测试范围，不代表已完成公网生产部署验收。
-
-## 数据准备与模型启动
-
-从仓库根目录运行 `pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle`。原始数据放在忽略的 `data/downloads/`，没有数据时业务仍可生成 36 份演示档案。详细实验入口见 [机器学习说明](machine-learning.md)。
-
-`app_meta` 保证档案只初始化一次；后来下载 CSV 不会覆盖已有业务数据。ML 每次启动读取当前数据，优先生活方式数据。首次没有大数据时添加文件后，可以在中心账号页面重新训练，不需要重置数据库。
-
-生产静态托管需与 API 同源（反向代理），保留会话 Cookie 和 CSRF；默认项目用于本地演示，不包含公网注册、真实通知网关或生产运维。
+| JDK/Node/Python 缺失 | 按环境说明准备工具，重新初始化 |
+| npm ENOTCACHED | 安装使用 `--offline=false`，避免继承个人离线模式 |
+| 401 / 403 | 重新登录；检查角色、记录范围及 CSRF，勿绕过授权 |
+| 构建/启动失败 | 查看 `.tools/logs/build.log` 或 `backend.log` |
+| 模型缺少结果 | 准备对应 CSV，检查格式/哈希后训练该数据集 |
+| 图表 chunk 体积提醒 | 已按路由加载，构建可用；提醒不等于失败 |

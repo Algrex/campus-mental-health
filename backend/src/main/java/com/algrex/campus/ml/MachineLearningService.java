@@ -50,10 +50,16 @@ public class MachineLearningService implements ApplicationRunner {
           "准备公开数据后，可运行真实模型实验。",
           "downloadCommand",
           "pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle");
-  private Map<String, FilteredClassifier> models = Map.of();
-  private Map<String, Double> thresholds = Map.of();
-  private Instances header;
-  private boolean lifestyle;
+
+  private record Experiment(
+      Map<String, Object> report,
+      Map<String, FilteredClassifier> models,
+      Map<String, Double> thresholds,
+      Instances header,
+      boolean lifestyle) {}
+
+  private final Map<String, Experiment> experiments = new LinkedHashMap<>();
+  private String defaultDataset;
 
   @Autowired
   public MachineLearningService(
@@ -83,6 +89,16 @@ public class MachineLearningService implements ApplicationRunner {
     if (autoTrain && available() != null) {
       try {
         train();
+        if ("lifestyle".equals(defaultDataset)
+            && Files.isRegularFile(dataset)
+            && fallback != null
+            && Files.isRegularFile(fallback)
+            && !dataset
+                .toAbsolutePath()
+                .normalize()
+                .equals(fallback.toAbsolutePath().normalize())) {
+          train("survey");
+        }
       } catch (Exception exception) {
         LOG.error("Model experiment failed; care workflows remain available", exception);
         report =
@@ -98,17 +114,58 @@ public class MachineLearningService implements ApplicationRunner {
   }
 
   public synchronized Map<String, Object> summary() {
-    return report;
+    return summary(null);
+  }
+
+  public synchronized Map<String, Object> summary(String requestedDataset) {
+    String selected = resolveDataset(requestedDataset);
+    if (selected == null) {
+      return report;
+    }
+    Experiment experiment = experiments.get(selected);
+    if (experiment != null) {
+      return experiment.report();
+    }
+    return Map.of(
+        "status",
+        "NO_DATA",
+        "message",
+        "该数据集尚无实验结果，请准备数据后点击训练。",
+        "downloadCommand",
+        "pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle");
+  }
+
+  private String resolveDataset(String requestedDataset) {
+    if (requestedDataset == null || requestedDataset.isBlank()) {
+      return defaultDataset;
+    }
+    if (!List.of("survey", "lifestyle").contains(requestedDataset)) {
+      throw new IllegalArgumentException("数据集仅支持 survey 或 lifestyle");
+    }
+    return requestedDataset;
   }
 
   /** Large data: untouched stratified test partition. Small survey: fold-local cross-validation. */
   public synchronized Map<String, Object> train() throws Exception {
-    Path file = available();
-    if (file == null) {
+    return train(null);
+  }
+
+  public synchronized Map<String, Object> train(String requestedDataset) throws Exception {
+    resolveDataset(requestedDataset);
+    Path file =
+        requestedDataset == null || requestedDataset.isBlank()
+            ? available()
+            : requestedDataset.equals("survey") ? (fallback != null ? fallback : dataset) : dataset;
+    if (file == null || !Files.isRegularFile(file)) {
       throw new IllegalArgumentException(
           "缺少数据，请先运行 scripts/download-demo-data.ps1 -IncludeLifestyle");
     }
     SurveyDataset.Loaded loaded = SurveyDataset.load(file);
+    if (requestedDataset != null
+        && !requestedDataset.isBlank()
+        && !loaded.type().equals(requestedDataset)) {
+      throw new IllegalArgumentException("CSV 格式与所选数据集不匹配");
+    }
     Instances data = loaded.instances();
     boolean large = data.size() >= 1000;
     boolean isLifestyle = loaded.type().equals("lifestyle");
@@ -277,25 +334,33 @@ public class MachineLearningService implements ApplicationRunner {
         isLifestyle
             ? "数据由作者程序生成，指标反映合成分布的可预测性。测试集未参与训练或阈值选择，仍不能证明真实校园中的效果；压力与标签可能受相同生成机制影响。"
             : "小样本单次交叉验证仅用于方法比较。评估后全量重训用于交互演示；没有独立外部测试集，不能宣称临床效力。");
-    Files.createDirectories(artifactDirectory);
+    Path output = artifactDirectory.resolve(loaded.type());
+    Files.createDirectories(output);
     JsonMapper mapper = JsonMapper.builder().build();
     Files.writeString(
-        artifactDirectory.resolve("evaluation.json"),
+        output.resolve("evaluation.json"),
         mapper.writerWithDefaultPrettyPrinter().writeValueAsString(next));
-    Files.writeString(artifactDirectory.resolve("training.arff"), training.toString());
+    Files.writeString(output.resolve("training.arff"), training.toString());
     if (large) {
-      Files.writeString(artifactDirectory.resolve("validation.arff"), validation.toString());
-      Files.writeString(artifactDirectory.resolve("testing.arff"), testing.toString());
+      Files.writeString(output.resolve("validation.arff"), validation.toString());
+      Files.writeString(output.resolve("testing.arff"), testing.toString());
     }
     for (Map.Entry<String, FilteredClassifier> entry : trained.entrySet()) {
       SerializationHelper.write(
-          artifactDirectory.resolve(entry.getKey() + ".model").toString(), entry.getValue());
+          output.resolve(entry.getKey() + ".model").toString(), entry.getValue());
     }
     // Predict with only locally trained objects; never deserialize arbitrary model uploads.
-    header = new Instances(data, 0);
-    models = Map.copyOf(trained);
-    thresholds = Map.copyOf(operatingThresholds);
-    lifestyle = isLifestyle;
+    experiments.put(
+        loaded.type(),
+        new Experiment(
+            next,
+            Map.copyOf(trained),
+            Map.copyOf(operatingThresholds),
+            new Instances(data, 0),
+            isLifestyle));
+    if (defaultDataset == null || requestedDataset == null || requestedDataset.isBlank()) {
+      defaultDataset = loaded.type();
+    }
     report = next;
     return report;
   }
@@ -342,11 +407,15 @@ public class MachineLearningService implements ApplicationRunner {
 
   public synchronized Map<String, Object> predict(MachineLearningController.PredictionDraft draft)
       throws Exception {
-    if (models.isEmpty()) {
+    Experiment experiment = experiments.get(resolveDataset(draft.dataset()));
+    if (experiment == null) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "请先准备数据并训练模型");
     }
+    Map<String, FilteredClassifier> models = experiment.models();
+    Map<String, Double> thresholds = experiment.thresholds();
+    Instances header = experiment.header();
     Instance instance;
-    if (lifestyle) {
+    if (experiment.lifestyle()) {
       instance = SurveyDataset.lifestyleInstance(header, draft);
     } else {
       if (draft.courseGroup() == null || draft.studyYear() == null || draft.married() == null) {

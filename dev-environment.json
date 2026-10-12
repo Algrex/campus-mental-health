@@ -15,13 +15,43 @@
     "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip"
   },
   "editorExtensions": [
-    {"id": "redhat.java", "version": "1.56.0"},
-    {"id": "vscjava.vscode-java-debug", "version": "0.59.0"},
-    {"id": "vscjava.vscode-java-test", "version": "0.46.0"},
-    {"id": "vscjava.vscode-maven", "version": "0.46.0"},
-    {"id": "vscjava.vscode-java-dependency", "version": "0.27.6"},
-    {"id": "vue.volar", "version": "3.3.13"},
-    {"id": "dbaeumer.vscode-eslint", "version": "3.0.34"},
-    {"id": "esbenp.prettier-vscode", "version": "12.4.0"}
-  ]
+    {
+      "id": "redhat.java",
+      "version": "1.56.0"
+    },
+    {
+      "id": "vscjava.vscode-java-debug",
+      "version": "0.59.0"
+    },
+    {
+      "id": "vscjava.vscode-java-test",
+      "version": "0.46.0"
+    },
+    {
+      "id": "vscjava.vscode-maven",
+      "version": "0.46.0"
+    },
+    {
+      "id": "vscjava.vscode-java-dependency",
+      "version": "0.27.6"
+    },
+    {
+      "id": "vue.volar",
+      "version": "3.3.13"
+    },
+    {
+      "id": "dbaeumer.vscode-eslint",
+      "version": "3.0.34"
+    },
+    {
+      "id": "esbenp.prettier-vscode",
+      "version": "12.4.0"
+    }
+  ],
+  "launcher": {
+    "language": "Python",
+    "minimumVersion": "3.10",
+    "thirdPartyDependencies": [],
+    "entry": "start.py"
+  }
 }
