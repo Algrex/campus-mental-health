@@ -33,6 +33,27 @@ describe('psychological assessment', () => {
       requestId: expect.any(String),
     });
     expect(wrapper.text()).toContain('本次自评已保存');
+    expect(wrapper.find('.level-badge').classes()).toContain('low');
+    expect(wrapper.find('.wellbeing-tip').text()).toContain('继续保持');
+  });
+  it('uses the combined rule level while keeping the PHQ score', async () => {
+    api.assess.mockResolvedValue({
+      score: 0,
+      riskLevel: 'LOW',
+      ruleRiskLevel: 'HIGH',
+    });
+    wrapper = mount(AssessmentView, {global: {stubs: {RouterLink: true}}});
+    for (let index = 0; index < 9; index++)
+      await wrapper
+        .find(`input[name="question-${index}"][value="0"]`)
+        .setValue();
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.find('.assessment-score strong').text()).toBe('0');
+    expect(wrapper.find('.level-badge').classes()).toContain('high');
+    expect(wrapper.text()).toContain('关注等级综合参考本次自评与近期打卡记录');
+    expect(wrapper.find('.wellbeing-tip').text()).not.toContain('继续保持');
+    expect(wrapper.find('.wellbeing-tip').text()).toContain('心理中心');
   });
   it('keeps a stable idempotency key when a failed submission is retried', async () => {
     api.assess

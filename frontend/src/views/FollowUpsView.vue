@@ -11,10 +11,20 @@ const rows = ref([]);
 const selected = ref('');
 const tab = ref('active');
 const today = localDay();
+const followUpStatuses = {
+  NONE: '未安排',
+  PLANNED: '当前计划',
+  SUPERSEDED: '已替代',
+  CANCELLED: '已取消',
+};
 const {busy, error, reload} = useLoad(async () => {
   rows.value = await api.followUps();
 });
-const active = computed(() => rows.value.filter((r) => r.status !== 'CLOSED'));
+const active = computed(() =>
+  rows.value.filter(
+    (r) => r.followUpStatus === 'PLANNED' && r.status !== 'CLOSED',
+  ),
+);
 const due = computed(() =>
   active.value.filter((r) => r.nextDate && r.nextDate <= today),
 );
@@ -111,7 +121,10 @@ const filtered = computed(() =>
             ><span>{{ row.authorName }}</span>
           </div>
           <div class="followup-card-footer">
-            <span class="status-label" :class="row.status.toLowerCase()">{{
+            <span class="subtle-tag">{{
+              followUpStatuses[row.followUpStatus]
+            }}</span
+            ><span class="status-label" :class="row.status.toLowerCase()">{{
               statuses[row.status]
             }}</span
             ><button class="text-button" @click="selected = row.alertId">
