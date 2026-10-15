@@ -2,6 +2,7 @@ package com.algrex.campus.portal;
 
 import com.algrex.campus.demo.CsvRows;
 import com.algrex.campus.demo.DemoAccounts.Account;
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,10 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PortalService {
@@ -77,6 +80,13 @@ public class PortalService {
     throw new AccessDeniedException("student scope");
   }
 
+  private void lockStudent(Account account, UUID id) {
+    if (rows("SELECT id FROM student_profiles WHERE id=? FOR UPDATE", id).isEmpty()) {
+      throw new IllegalArgumentException("学生记录不存在");
+    }
+    student(account, id);
+  }
+
   public List<Map<String, Object>> students(
       Account account, String query, String college, String level) {
     staff(account);
@@ -108,7 +118,9 @@ public class PortalService {
     result.put("student", student(account, id));
     result.put(
         "assessments",
-        rows("SELECT * FROM assessments WHERE student_id=? ORDER BY created_at DESC", id));
+        rows(
+            "SELECT * FROM assessments WHERE student_id=? ORDER BY created_at DESC,sequence_no DESC",
+            id));
     result.put(
         "checkIns",
         rows("SELECT * FROM check_ins WHERE student_id=? ORDER BY check_date DESC LIMIT 30", id));
@@ -193,7 +205,10 @@ public class PortalService {
     result.put(
         "followUps",
         followUps(account).stream()
-            .filter(row -> !row.get("status").equals("CLOSED"))
+            .filter(
+                row ->
+                    !row.get("status").equals("CLOSED")
+                        && row.get("followUpStatus").equals("PLANNED"))
             .limit(5)
             .toList());
     return result;
@@ -221,7 +236,7 @@ public class PortalService {
           draft.contactName(),
           "演示录入");
     } else {
-      student(account, id);
+      lockStudent(account, id);
       jdbc.update(
           "UPDATE student_profiles SET student_code=?,display_name=?,college=?,major=?,year_name=?,gender=?,age=?,contact_name=? WHERE id=?",
           draft.studentCode().trim(),
@@ -283,21 +298,24 @@ public class PortalService {
       throw new AccessDeniedException("student required");
     }
     UUID id = UUID.fromString(account.studentId());
-    student(account, id);
+    lockStudent(account, id);
+    String answers = String.join(",", draft.answers().stream().map(String::valueOf).toList());
     List<Map<String, Object>> previous =
         rows("SELECT * FROM assessments WHERE request_id=?", draft.requestId());
     if (!previous.isEmpty()) {
       if (!previous.getFirst().get("studentId").equals(id.toString())) {
         throw new AccessDeniedException("request scope");
       }
+      if (!previous.getFirst().get("answers").equals(answers)) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "提交标识已用于另一份测评，请刷新后重试");
+      }
       return previous.getFirst();
     }
     int score = draft.answers().stream().mapToInt(Integer::intValue).sum();
     String level = scoreLevel(score, draft.answers().get(8) > 0);
     UUID assessmentId = UUID.randomUUID();
-    String answers = String.join(",", draft.answers().stream().map(String::valueOf).toList());
     jdbc.update(
-        "INSERT INTO assessments VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO assessments(id,student_id,answers,score,risk_level,created_at,request_id,source_name,rule_risk_level) VALUES(?,?,?,?,?,?,?,?,?)",
         assessmentId,
         id,
         answers,
@@ -305,8 +323,10 @@ public class PortalService {
         level,
         Timestamp.valueOf(LocalDateTime.now()),
         draft.requestId(),
-        "学生自评");
-    evaluate(id);
+        "学生自评",
+        level);
+    String ruleLevel = evaluate(id, assessmentId);
+    jdbc.update("UPDATE assessments SET rule_risk_level=? WHERE id=?", ruleLevel, assessmentId);
     return rows("SELECT * FROM assessments WHERE id=?", assessmentId).getFirst();
   }
 
@@ -316,10 +336,24 @@ public class PortalService {
       throw new AccessDeniedException("student required");
     }
     UUID id = UUID.fromString(account.studentId());
-    student(account, id);
+    lockStudent(account, id);
+    if (draft.sleepHours().stripTrailingZeros().scale() > 1) {
+      throw new IllegalArgumentException("睡眠时长最多保留一位小数");
+    }
     LocalDate day = LocalDate.now();
     List<Map<String, Object>> previous =
-        rows("SELECT id FROM check_ins WHERE student_id=? AND check_date=?", id, Date.valueOf(day));
+        rows("SELECT * FROM check_ins WHERE student_id=? AND check_date=?", id, Date.valueOf(day));
+    boolean ruleInputsChanged = true;
+    if (!previous.isEmpty()) {
+      Map<String, Object> current = previous.getFirst();
+      ruleInputsChanged =
+          !draft.mood().equals(current.get("mood"))
+              || draft.sleepHours().compareTo((BigDecimal) current.get("sleepHours")) != 0
+              || !draft.stress().equals(current.get("stress"));
+      if (!ruleInputsChanged && draft.note().equals(current.get("note"))) {
+        return current;
+      }
+    }
     if (previous.isEmpty()) {
       jdbc.update(
           "INSERT INTO check_ins VALUES(?,?,?,?,?,?,?,?)",
@@ -340,7 +374,9 @@ public class PortalService {
           draft.note(),
           UUID.fromString(previous.getFirst().get("id").toString()));
     }
-    evaluate(id);
+    if (ruleInputsChanged) {
+      evaluate(id, null);
+    }
     return rows(
             "SELECT * FROM check_ins WHERE student_id=? AND check_date=?", id, Date.valueOf(day))
         .getFirst();
@@ -363,9 +399,11 @@ public class PortalService {
     return List.of("LOW", "MEDIUM", "HIGH", "CRITICAL").indexOf(level);
   }
 
-  private void evaluate(UUID id) {
+  private String evaluate(UUID id, UUID submittedAssessmentId) {
     List<Map<String, Object>> measurements =
-        rows("SELECT * FROM assessments WHERE student_id=? ORDER BY created_at DESC LIMIT 1", id);
+        rows(
+            "SELECT * FROM assessments WHERE student_id=? ORDER BY created_at DESC,sequence_no DESC LIMIT 1",
+            id);
     int score =
         measurements.isEmpty() ? 0 : ((Number) measurements.getFirst().get("score")).intValue();
     boolean urgent =
@@ -376,19 +414,19 @@ public class PortalService {
     String reason = urgent ? "测评中出现需优先复核的回答，请尽快人工联系。" : "最近一次测评总分 " + score + "，按演示规则进行关注分级。";
     List<Map<String, Object>> recent =
         rows(
-            "SELECT * FROM check_ins WHERE student_id=? AND check_date>=CURRENT_DATE-6 ORDER BY check_date DESC",
+            "SELECT * FROM check_ins WHERE student_id=? AND check_date BETWEEN CURRENT_DATE-6 AND CURRENT_DATE ORDER BY check_date DESC",
             id);
     long poorSleep =
         recent.stream().filter(row -> ((Number) row.get("sleepHours")).doubleValue() < 5).count();
     if (poorSleep >= 3 && rank(level) < 2) {
       level = "HIGH";
-      reason = "近 7 天有 3 次以上睡眠不足记录，需要人工了解近期状态。";
+      reason = "近 7 天至少有 3 次睡眠不足记录，需要人工了解近期状态。";
     } else if (!recent.isEmpty()
         && ((Number) recent.getFirst().get("mood")).intValue() <= 2
         && ((Number) recent.getFirst().get("stress")).intValue() >= 4
         && rank(level) < 1) {
       level = "MEDIUM";
-      reason = "今日情绪偏低且压力较高，建议安排一次沟通。";
+      reason = "最近一次打卡（" + recent.getFirst().get("checkDate") + "）情绪偏低且压力较高，建议安排一次沟通。";
     }
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
     jdbc.update(
@@ -406,36 +444,53 @@ public class PortalService {
         reason,
         now);
     if (level.equals("LOW")) {
-      return;
+      return level;
     }
     List<Map<String, Object>> open =
         rows(
-            "SELECT * FROM alerts WHERE student_id=? AND status<>'CLOSED' ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM alerts WHERE student_id=? AND status<>'CLOSED' ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
             id);
+    UUID urgentAssessmentId =
+        urgent ? UUID.fromString(measurements.getFirst().get("id").toString()) : null;
     if (open.isEmpty()) {
       UUID alertId = UUID.randomUUID();
       jdbc.update(
-          "INSERT INTO alerts(id,student_id,risk_level,status,reason,created_at,updated_at) VALUES(?,?,?,'PENDING',?,?,?)",
+          "INSERT INTO alerts(id,student_id,risk_level,status,reason,created_at,updated_at,urgent_assessment_id) VALUES(?,?,?,'PENDING',?,?,?,?)",
           alertId,
           id,
           level,
           reason,
           now,
-          now);
-      notifyAlert(alertId, id, level, false);
-    } else if (rank(level) > rank(open.getFirst().get("riskLevel").toString())) {
-      UUID alertId = UUID.fromString(open.getFirst().get("id").toString());
-      jdbc.update(
-          "UPDATE alerts SET risk_level=?,reason=?,updated_at=? WHERE id=?",
-          level,
-          reason,
           now,
-          alertId);
-      notifyAlert(alertId, id, level, true);
+          urgentAssessmentId);
+      notifyAlert(alertId, id, level, false);
+    } else {
+      Map<String, Object> current = open.getFirst();
+      boolean escalation = rank(level) > rank(current.get("riskLevel").toString());
+      boolean newUrgent =
+          urgentAssessmentId != null
+              && urgentAssessmentId.equals(submittedAssessmentId)
+              && !urgentAssessmentId.toString().equals(current.get("urgentAssessmentId"));
+      if (escalation || newUrgent) {
+        UUID alertId = UUID.fromString(current.get("id").toString());
+        jdbc.update(
+            "UPDATE alerts SET risk_level=?,reason=?,updated_at=?,urgent_assessment_id=?,status=CASE WHEN status='AWAITING_REASSESSMENT' THEN 'ACCEPTED' ELSE status END WHERE id=? AND status<>'CLOSED'",
+            level,
+            reason,
+            now,
+            urgentAssessmentId,
+            alertId);
+        notifyAlert(alertId, id, level, newUrgent ? "新的优先复核提醒" : "关注等级已升级");
+      }
     }
+    return level;
   }
 
   public void notifyAlert(UUID alertId, UUID studentId, String level, boolean escalation) {
+    notifyAlert(alertId, studentId, level, escalation ? "关注等级已升级" : "新的关注提醒");
+  }
+
+  private void notifyAlert(UUID alertId, UUID studentId, String level, String title) {
     Map<String, Object> profile =
         rows("SELECT display_name,college FROM student_profiles WHERE id=?", studentId).getFirst();
     List<String> recipients = new ArrayList<>();
@@ -449,7 +504,7 @@ public class PortalService {
           UUID.randomUUID(),
           alertId,
           recipient,
-          escalation ? "关注等级已升级" : "新的关注提醒",
+          title,
           profile.get("displayName") + "的状态需要关注，请查看并安排沟通。",
           Timestamp.valueOf(LocalDateTime.now()));
     }
@@ -499,6 +554,13 @@ public class PortalService {
     return result.getFirst();
   }
 
+  private Map<String, Object> lockAlert(Account account, UUID id) {
+    Map<String, Object> current = alert(account, id);
+    // Signal processing, scope changes and case changes take locks in the same order.
+    lockStudent(account, UUID.fromString(current.get("studentId").toString()));
+    return rows("SELECT * FROM alerts WHERE id=? FOR UPDATE", id).getFirst();
+  }
+
   public Map<String, Object> alertDetail(Account account, UUID id) {
     Map<String, Object> row = alert(account, id);
     return Map.of(
@@ -512,7 +574,7 @@ public class PortalService {
 
   @Transactional
   public Map<String, Object> transition(Account account, UUID id, String action, String reason) {
-    Map<String, Object> row = alert(account, id);
+    Map<String, Object> row = lockAlert(account, id);
     String status = row.get("status").toString();
     String next;
     if (action.equals("accept") && status.equals("PENDING")) {
@@ -525,11 +587,12 @@ public class PortalService {
       }
       next = "CLOSED";
     } else {
-      throw new IllegalArgumentException("当前状态不允许执行此操作");
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "当前个案状态不允许执行此操作，请刷新后重试");
     }
     int changed =
         jdbc.update(
-            "UPDATE alerts SET status=?,assigned_to=?,updated_at=?,close_reason=? WHERE id=? AND status=?",
+            "UPDATE alerts SET status=?,assigned_to=CASE WHEN ?='ACCEPTED' THEN ? ELSE assigned_to END,updated_at=?,close_reason=? WHERE id=? AND status=?",
+            next,
             next,
             account.displayName(),
             Timestamp.valueOf(LocalDateTime.now()),
@@ -537,8 +600,12 @@ public class PortalService {
             id,
             status);
     if (changed != 1) {
-      throw new org.springframework.web.server.ResponseStatusException(
-          org.springframework.http.HttpStatus.CONFLICT, "个案状态已被其他操作更新，请刷新后重试");
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "个案状态已被其他操作更新，请刷新后重试");
+    }
+    if (next.equals("CLOSED")) {
+      jdbc.update(
+          "UPDATE interventions SET follow_up_status='CANCELLED' WHERE alert_id=? AND follow_up_status='PLANNED'",
+          id);
     }
     return alert(account, id);
   }
@@ -546,26 +613,34 @@ public class PortalService {
   @Transactional
   public Map<String, Object> intervention(
       Account account, UUID id, PortalController.InterventionDraft draft) {
-    Map<String, Object> current = alert(account, id);
+    Map<String, Object> current = lockAlert(account, id);
     if (!List.of("ACCEPTED", "INTERVENING", "AWAITING_REASSESSMENT")
         .contains(current.get("status").toString())) {
-      throw new IllegalArgumentException("请先受理预警，已关闭的个案不能新增记录");
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "请先受理预警，已关闭的个案不能新增记录");
     }
     UUID recordId = UUID.randomUUID();
+    int changed =
+        jdbc.update(
+            "UPDATE alerts SET status='INTERVENING',updated_at=? WHERE id=? AND status=?",
+            Timestamp.valueOf(LocalDateTime.now()),
+            id,
+            current.get("status"));
+    if (changed != 1) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "个案状态已被其他操作更新，请刷新后重试");
+    }
     jdbc.update(
-        "INSERT INTO interventions VALUES(?,?,?,?,?,?,?)",
+        "UPDATE interventions SET follow_up_status='SUPERSEDED' WHERE alert_id=? AND follow_up_status='PLANNED'",
+        id);
+    jdbc.update(
+        "INSERT INTO interventions(id,alert_id,kind,content,next_date,author_name,created_at,follow_up_status) VALUES(?,?,?,?,?,?,?,?)",
         recordId,
         id,
         draft.kind(),
         draft.content(),
         draft.nextDate() == null ? null : Date.valueOf(draft.nextDate()),
         account.displayName(),
-        Timestamp.valueOf(LocalDateTime.now()));
-    jdbc.update(
-        "UPDATE alerts SET status='INTERVENING',assigned_to=?,updated_at=? WHERE id=?",
-        account.displayName(),
         Timestamp.valueOf(LocalDateTime.now()),
-        id);
+        draft.nextDate() == null ? "NONE" : "PLANNED");
     return rows("SELECT * FROM interventions WHERE id=?", recordId).getFirst();
   }
 
@@ -581,18 +656,38 @@ public class PortalService {
   }
 
   public List<Map<String, Object>> notifications(Account account) {
+    List<Object> arguments = new ArrayList<>();
+    arguments.add(account.username());
+    String scope = notificationScope(account, arguments);
     return rows(
-        "SELECT * FROM notifications WHERE recipient=? ORDER BY created_at DESC",
-        account.username());
+        "SELECT n.* FROM notifications n WHERE n.recipient=?"
+            + scope
+            + " ORDER BY n.created_at DESC",
+        arguments.toArray());
+  }
+
+  private String notificationScope(Account account, List<Object> arguments) {
+    if (account.role().equals("COUNSELOR")) {
+      arguments.add(account.college());
+      return " AND (n.alert_id IS NULL OR EXISTS (SELECT 1 FROM alerts a JOIN student_profiles s ON s.id=a.student_id WHERE a.id=n.alert_id AND s.college=?))";
+    }
+    if (List.of("STUDENT", "CONTACT").contains(account.role())) {
+      arguments.add(UUID.fromString(account.studentId()));
+      return " AND (n.alert_id IS NULL OR EXISTS (SELECT 1 FROM alerts a WHERE a.id=n.alert_id AND a.student_id=?))";
+    }
+    return "";
   }
 
   @Transactional
   public void readNotification(Account account, UUID id) {
+    List<Object> arguments = new ArrayList<>();
+    arguments.add(id);
+    arguments.add(account.username());
+    String scope = notificationScope(account, arguments);
     int updated =
         jdbc.update(
-            "UPDATE notifications SET is_read=TRUE WHERE id=? AND recipient=?",
-            id,
-            account.username());
+            "UPDATE notifications n SET is_read=TRUE WHERE n.id=? AND n.recipient=?" + scope,
+            arguments.toArray());
     if (updated == 0) {
       throw new AccessDeniedException("notification recipient");
     }

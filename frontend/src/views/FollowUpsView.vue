@@ -14,14 +14,20 @@ const selected = ref('');
 const tab = ref('active');
 // 页面创建时取得本地日期，避免 UTC 日期偏移；此值不会在跨日时自动更新。
 const today = localDay();
-// 加载可访问的随访记录，失败重试和抽屉变更后均复用 reload 刷新。
+const followUpStatuses = {
+  NONE: '未安排',
+  PLANNED: '当前计划',
+  SUPERSEDED: '已替代',
+  CANCELLED: '已取消',
+};
 const {busy, error, reload} = useLoad(async () => {
   rows.value = await api.followUps();
 });
-// “进行中”按关联个案未关闭筛选，已关闭个案的记录仍保留在全部记录中。
-const active = computed(() => rows.value.filter((r) => r.status !== 'CLOSED'));
-// “今日及逾期”仅包含未关闭个案中已安排日期且不晚于今天的记录。
-// nextDate 使用 YYYY-MM-DD 格式，可直接与同格式的 today 比较。
+const active = computed(() =>
+  rows.value.filter(
+    (r) => r.followUpStatus === 'PLANNED' && r.status !== 'CLOSED',
+  ),
+);
 const due = computed(() =>
   active.value.filter((r) => r.nextDate && r.nextDate <= today),
 );
@@ -120,7 +126,10 @@ const filtered = computed(() =>
             ><span>{{ row.authorName }}</span>
           </div>
           <div class="followup-card-footer">
-            <span class="status-label" :class="row.status.toLowerCase()">{{
+            <span class="subtle-tag">{{
+              followUpStatuses[row.followUpStatus]
+            }}</span
+            ><span class="status-label" :class="row.status.toLowerCase()">{{
               statuses[row.status]
             }}</span
             ><button class="text-button" @click="selected = row.alertId">

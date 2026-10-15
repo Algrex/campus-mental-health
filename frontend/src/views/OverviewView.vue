@@ -20,7 +20,11 @@ const selected = ref('');
 const {busy, error, reload} = useLoad(async () => {
   data.value = await api.dashboard();
 });
-// 将后端统计字段映射为四张卡片；接口数据返回前使用空数组。
+const followUps = computed(() =>
+  (data.value?.followUps || []).filter(
+    (item) => item.followUpStatus === 'PLANNED' && item.status !== 'CLOSED',
+  ),
+);
 const stats = computed(() =>
   data.value
     ? [
@@ -230,9 +234,9 @@ const stats = computed(() =>
               ><Icon name="arrow" :size="18"
             /></router-link>
           </div>
-          <div v-if="!data.followUps.length" class="state">暂无随访安排</div>
+          <div v-if="!followUps.length" class="state">暂无随访安排</div>
           <button
-            v-for="item in data.followUps.slice(0, 3)"
+            v-for="item in followUps.slice(0, 3)"
             :key="item.id"
             class="followup-item"
             @click="selected = item.alertId"

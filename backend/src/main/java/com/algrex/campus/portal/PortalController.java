@@ -150,7 +150,8 @@ public class PortalController {
 
   public record CheckInDraft(
       @NotNull @Min(1) @Max(5) Integer mood,
-      @NotNull @DecimalMin("0") @DecimalMax("24") BigDecimal sleepHours,
+      @NotNull @DecimalMin("0") @DecimalMax("24") @Digits(integer = 2, fraction = 1)
+          BigDecimal sleepHours,
       @NotNull @Min(1) @Max(5) Integer stress,
       @NotNull @Size(max = 600) String note) {}
 
