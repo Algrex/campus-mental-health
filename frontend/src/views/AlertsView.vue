@@ -9,15 +9,21 @@ import LevelBadge from '../components/LevelBadge.vue';
 import PageState from '../components/PageState.vue';
 import CaseDrawer from '../components/CaseDrawer.vue';
 const route = useRoute();
+// 列表保存后端返回的可访问预警，状态统计与筛选结果均基于这份数据。
 const rows = ref([]);
+// 空状态表示全部；状态标签与搜索关键词共同决定表格显示的记录。
 const status = ref('');
 const q = ref('');
+// 初次创建页面时读取 ?case= 中的个案 ID，支持从其他页面定位详情。
+// selected 保存预警 ID，而非学生 ID，与 CaseDrawer 的数据接口对应。
 const selected = ref(
   typeof route.query.case === 'string' ? route.query.case : '',
 );
+// 首次加载、失败重试和个案操作完成后，复用同一入口刷新预警列表。
 const {busy, error, reload} = useLoad(async () => {
   rows.value = await api.alerts();
 });
+// 在已授权列表内按状态和姓名、学号或学院进行前端筛选，不发起额外请求。
 const filtered = computed(() =>
   rows.value.filter(
     (r) =>
@@ -41,6 +47,7 @@ const filtered = computed(() =>
       个进行中的个案</span
     >
   </div>
+  <!-- 流程条展示各状态的记录数量；切换筛选条件不会改变这里的统计。 -->
   <div class="workflow-strip">
     <div v-for="(label, key, index) in statuses" :key="key">
       <span>{{ index + 1 }}</span
@@ -107,6 +114,7 @@ const filtered = computed(() =>
                 }}</span>
               </td>
               <td class="muted">{{ date(row.createdAt) }}</td>
+              <!-- “受理”按钮先打开详情，具体业务操作在个案抽屉中完成。 -->
               <td>
                 <button class="text-button" @click="selected = row.id">
                   {{ row.status === 'PENDING' ? '受理' : '查看个案'
@@ -118,5 +126,6 @@ const filtered = computed(() =>
         </table></div
     ></PageState>
   </section>
+  <!-- 抽屉通知个案已变更后重新获取列表，同步状态、数量及关注原因。 -->
   <CaseDrawer v-model="selected" @changed="reload" />
 </template>
