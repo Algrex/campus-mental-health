@@ -7,17 +7,25 @@ import Icon from '../components/Icon.vue';
 import LevelBadge from '../components/LevelBadge.vue';
 import PageState from '../components/PageState.vue';
 import CaseDrawer from '../components/CaseDrawer.vue';
+// 每条 rows 数据是一条关怀记录，同一个预警个案可以对应多条记录。
 const rows = ref([]);
+// 详情抽屉接收关联的 alertId，而不是关怀记录自身的 id。
 const selected = ref('');
 const tab = ref('active');
+// 页面创建时取得本地日期，避免 UTC 日期偏移；此值不会在跨日时自动更新。
 const today = localDay();
+// 加载可访问的随访记录，失败重试和抽屉变更后均复用 reload 刷新。
 const {busy, error, reload} = useLoad(async () => {
   rows.value = await api.followUps();
 });
+// “进行中”按关联个案未关闭筛选，已关闭个案的记录仍保留在全部记录中。
 const active = computed(() => rows.value.filter((r) => r.status !== 'CLOSED'));
+// “今日及逾期”仅包含未关闭个案中已安排日期且不晚于今天的记录。
+// nextDate 使用 YYYY-MM-DD 格式，可直接与同格式的 today 比较。
 const due = computed(() =>
   active.value.filter((r) => r.nextDate && r.nextDate <= today),
 );
+// 标签切换只选择本地计算结果，不重复请求后端，也不改变顶部统计范围。
 const filtered = computed(() =>
   tab.value === 'due'
     ? due.value
@@ -37,6 +45,7 @@ const filtered = computed(() =>
       ><Icon name="plus" :size="17" />从预警开始跟进</router-link
     >
   </div>
+  <!-- 今日及逾期按记录计数，持续跟进按 alertId 去重计数，累计记录包含已关闭个案。 -->
   <div class="followup-stats">
     <article class="card">
       <span class="stat-icon amber"><Icon name="calendar" /></span>
@@ -125,5 +134,6 @@ const filtered = computed(() =>
       </div></PageState
     >
   </section>
+  <!-- 在个案抽屉中补充关怀记录或改变状态后，刷新列表与统计。 -->
   <CaseDrawer v-model="selected" @changed="reload" />
 </template>
