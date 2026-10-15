@@ -9,11 +9,13 @@ import Icon from '../components/Icon.vue';
 import LevelBadge from '../components/LevelBadge.vue';
 import PageState from '../components/PageState.vue';
 import StudentDrawer from '../components/StudentDrawer.vue';
+// rows 保存接口返回的可访问档案，搜索条件与当前页码由页面独立维护。
 const rows = ref([]);
 const q = ref('');
 const college = ref('');
 const level = ref('');
 const page = ref(1);
+// selected 为详情抽屉使用的学生 ID，editingId 为新增或编辑弹窗使用的 ID。
 const selected = ref('');
 const dialog = ref(false);
 const editingId = ref('');
@@ -23,7 +25,9 @@ const importResult = ref(null);
 const {busy, error, reload} = useLoad(async () => {
   rows.value = await api.students();
 });
+// 学院选项从已加载档案去重生成，不额外请求学院列表。
 const colleges = computed(() => [...new Set(rows.value.map((r) => r.college))]);
+// 在后端已授权的数据范围内筛选：关键词、学院、关注等级三个条件同时生效。
 const filtered = computed(() =>
   rows.value.filter(
     (r) =>
@@ -35,15 +39,18 @@ const filtered = computed(() =>
       (!level.value || r.riskLevel === level.value),
   ),
 );
+// 每页显示 12 条；无匹配结果时页数仍为 1，空状态交给 PageState 展示。
 const pages = computed(() =>
   Math.max(1, Math.ceil(filtered.value.length / 12)),
 );
+// 限制切片页码不超过总页数，避免数据刷新后旧页码导致列表显示为空。
 const visible = computed(() =>
   filtered.value.slice(
     (Math.min(page.value, pages.value) - 1) * 12,
     Math.min(page.value, pages.value) * 12,
   ),
 );
+// 每次调用生成独立表单对象，默认学院优先使用当前账号绑定的学院。
 const blank = () => ({
   studentCode: '',
   displayName: '',
@@ -55,6 +62,7 @@ const blank = () => ({
   contactName: '演示联系人',
 });
 const draft = ref(blank());
+// 新增和编辑复用弹窗；编辑时只复制表单字段，取消操作不会直接改动列表对象。
 function edit(row) {
   editingId.value = row?.id || '';
   draft.value = row
@@ -62,6 +70,7 @@ function edit(row) {
     : blank();
   dialog.value = true;
 }
+// 将表单与编辑 ID 交给接口区分新增和更新，保存成功后重新加载档案列表。
 async function save() {
   saving.value = true;
   try {
@@ -75,6 +84,7 @@ async function save() {
     saving.value = false;
   }
 }
+// 先校验文件大小，再将 CSV 文本交给后端解析；保留返回的成功数和逐行错误。
 async function upload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -90,10 +100,12 @@ async function upload(event) {
   } catch (e) {
     ElMessage.error(e.message);
   } finally {
+    // 清空文件选择，允许用户修正内容后再次选择同名 CSV。
     event.target.value = '';
     saving.value = false;
   }
 }
+// 在浏览器中生成 UTF-8 BOM 模板，便于表格软件识别中文；下载后释放临时 URL。
 function sample() {
   const url = URL.createObjectURL(
     new Blob(
