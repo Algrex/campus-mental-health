@@ -9,23 +9,54 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "spring.datasource.url=jdbc:h2:mem:workflow-test;DB_CLOSE_DELAY=-1")
 class DemoWorkflowIntegrationTest {
   @LocalServerPort private int port;
+  @Autowired private JdbcTemplate jdbc;
   private final JsonMapper json = JsonMapper.builder().build();
+
+  @BeforeEach
+  void resetDemoStudent() {
+    UUID id = DemoAccounts.studentId(0);
+    jdbc.update(
+        "DELETE FROM notifications WHERE alert_id IN (SELECT id FROM alerts WHERE student_id=?) OR recipient='contact'",
+        id);
+    jdbc.update(
+        "DELETE FROM interventions WHERE alert_id IN (SELECT id FROM alerts WHERE student_id=?)",
+        id);
+    jdbc.update("DELETE FROM alerts WHERE student_id=?", id);
+    jdbc.update("DELETE FROM risk_snapshots WHERE student_id=?", id);
+    jdbc.update("DELETE FROM check_ins WHERE student_id=?", id);
+    jdbc.update("DELETE FROM assessments WHERE student_id=?", id);
+    jdbc.update(
+        "UPDATE student_profiles SET college='计算机学院',risk_level='LOW',current_score=0 WHERE id=?",
+        id);
+  }
 
   private class Browser implements AutoCloseable {
     final HttpClient client =
         HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
             .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
             .build();
     String csrf;
@@ -33,7 +64,8 @@ class DemoWorkflowIntegrationTest {
     HttpResponse<String> request(
         String path, String method, String body, boolean token, boolean form) throws Exception {
       HttpRequest.Builder request =
-          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path));
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path))
+              .timeout(Duration.ofSeconds(15));
       if (token) {
         request.header("X-XSRF-TOKEN", csrf);
       }
@@ -115,6 +147,7 @@ class DemoWorkflowIntegrationTest {
       Map<String, Object> checkIn =
           Map.of("mood", 3, "sleepHours", 7.5, "stress", 2, "note", "integration demo");
       JsonNode first = student.ok("/check-ins", checkIn);
+      snapshots = count("risk_snapshots");
       JsonNode second = student.ok("/check-ins", checkIn);
       assertThat(first.get("id").asString()).isEqualTo(second.get("id").asString());
       JsonNode profile = student.get("/profile");
@@ -136,20 +169,30 @@ class DemoWorkflowIntegrationTest {
           Map.of("kind", "沟通访谈", "content", "已经沟通并约定支持安排"));
       assertThat(staff.ok("/alerts/" + alertId + "/review", Map.of()).get("status").asString())
           .isEqualTo("AWAITING_REASSESSMENT");
+      JsonNode reassessment = student.ok("/assessments", assessment(0, 0));
+      assertThat(reassessment.get("riskLevel").asText()).isEqualTo("LOW");
+      assertThat(reassessment.get("ruleRiskLevel").asText()).isEqualTo("LOW");
+      assertThat(reassessment.get("id").asText()).isNotEqualTo(assessment.get("id").asText());
+      assertStatus(staff, alertId, "AWAITING_REASSESSMENT");
       assertThat(
               staff
                   .ok("/alerts/" + alertId + "/close", Map.of("reason", "人工复评完成，继续日常支持"))
                   .get("status")
                   .asString())
           .isEqualTo("CLOSED");
-      assertThat(staff.get("/alerts/" + alertId).get("records").size()).isGreaterThan(0);
+      assertThat(staff.get("/alerts/" + alertId).get("records").size()).isEqualTo(1);
+      assertThat(staff.get("/alerts/" + alertId).get("records").get(0).get("id").asText())
+          .isEqualTo(record.get("id").asText());
+      assertThat(related(staff.get("/dashboard").get("followUps"), alertId)).isEmpty();
       assertThat(contact.request("/profile", "GET", null, false, false).statusCode())
           .isEqualTo(403);
       JsonNode notices = contact.get("/notifications");
       assertThat(notices.size()).isGreaterThan(0);
       String notification = notices.get(0).get("id").asString();
       contact.ok("/notifications/" + notification + "/read", Map.of());
-      assertThat(contact.get("/notifications").get(0).get("isRead").asBoolean()).isTrue();
+      assertThat(
+              related(contact.get("/notifications"), alertId).getFirst().get("isRead").asBoolean())
+          .isTrue();
       assertThat(notices.toString()).doesNotContain("测评总分", "answers", "sleepHours");
     }
   }
@@ -189,6 +232,17 @@ class DemoWorkflowIntegrationTest {
       assertThat(
               student
                   .post("/assessments", Map.of("answers", List.of(99), "requestId", "bad"))
+                  .statusCode())
+          .isEqualTo(400);
+      assertThat(
+              student
+                  .post(
+                      "/assessments",
+                      Map.of(
+                          "answers",
+                          List.of(0, 0, 0, 0, 0, 0, 0, 0, 0.9),
+                          "requestId",
+                          "fractional-answer"))
                   .statusCode())
           .isEqualTo(400);
       assertThat(

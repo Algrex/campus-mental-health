@@ -1,5 +1,5 @@
 <script setup>
-import {ref} from 'vue';
+import {computed, ref} from 'vue';
 import {api} from '../api/portal.js';
 import {date, localDay} from '../utils/format.js';
 import {useLoad} from '../utils/useLoad.js';
@@ -11,6 +11,10 @@ import PageState from '../components/PageState.vue';
 const data = ref(null);
 const {busy, error, reload} = useLoad(async () => {
   data.value = await api.profile();
+});
+const latestAssessmentLevel = computed(() => {
+  const latest = data.value?.assessments[0];
+  return latest?.ruleRiskLevel ?? latest?.riskLevel;
 });
 </script>
 <template>
@@ -94,14 +98,16 @@ const {busy, error, reload} = useLoad(async () => {
               ><span>/ 27</span>
             </div>
             <div class="centered">
-              <LevelBadge :level="data.assessments[0].riskLevel" />
+              <LevelBadge :level="latestAssessmentLevel" />
+              <p class="muted">关注等级综合参考提交时的自评与近期打卡记录。</p>
               <p class="muted">
                 {{ date(data.assessments[0].createdAt, true) }}
               </p>
             </div>
             <p class="wellbeing-tip">
               {{
-                data.assessments[0].riskLevel === 'LOW'
+                latestAssessmentLevel === 'LOW' &&
+                data.student.riskLevel === 'LOW'
                   ? '保持适合自己的生活节奏，也给休息留一点空间。'
                   : '如果最近感到困扰，可以主动联系学校心理中心或信任的人，获得支持。'
               }}
@@ -124,7 +130,7 @@ const {busy, error, reload} = useLoad(async () => {
                 <th>日期</th>
                 <th>自评</th>
                 <th>分数</th>
-                <th>关注提示</th>
+                <th>提交时关注</th>
                 <th>来源</th>
               </tr>
             </thead>
@@ -133,7 +139,9 @@ const {busy, error, reload} = useLoad(async () => {
                 <td>{{ date(row.createdAt, true) }}</td>
                 <td>PHQ-9 心理自评</td>
                 <td>{{ row.score }} / 27</td>
-                <td><LevelBadge :level="row.riskLevel" /></td>
+                <td>
+                  <LevelBadge :level="row.ruleRiskLevel ?? row.riskLevel" />
+                </td>
                 <td class="muted">{{ row.sourceName }}</td>
               </tr>
             </tbody>

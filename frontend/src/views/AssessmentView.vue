@@ -21,6 +21,9 @@ const saving = ref(false);
 const result = ref(null);
 const requestId = ref(crypto.randomUUID());
 const error = ref('');
+const resultLevel = computed(
+  () => result.value?.ruleRiskLevel ?? result.value?.riskLevel,
+);
 const completed = computed(
   () => answers.value.filter((value) => value !== null).length,
 );
@@ -62,14 +65,16 @@ function again() {
     <span class="result-icon"><Icon name="check" :size="30" /></span>
     <h2>谢谢你，认真回应自己的感受。</h2>
     <p class="muted">本次自评已保存到你的健康档案。</p>
+    <p class="muted">本次 PHQ-9 自评总分</p>
     <div class="assessment-score">
       <strong>{{ result.score }}</strong
       ><span>/ 27</span>
     </div>
-    <LevelBadge :level="result.riskLevel" />
+    <LevelBadge :level="resultLevel" />
+    <p class="muted">关注等级综合参考本次自评与近期打卡记录。</p>
     <p class="wellbeing-tip">
       {{
-        result.riskLevel === 'LOW'
+        resultLevel === 'LOW'
           ? '继续保持适合自己的节奏。你也可以用每日打卡记录小小的变化。'
           : '分数不代表诊断。如果近来感到困难，建议与学校心理中心或信任的人聊一聊。'
       }}

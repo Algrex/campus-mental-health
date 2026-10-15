@@ -151,7 +151,7 @@ public class DemoSeeder implements ApplicationRunner {
         String answerText =
             String.join(",", java.util.Arrays.stream(answers).mapToObj(String::valueOf).toList());
         jdbc.update(
-            "INSERT INTO assessments VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO assessments(id,student_id,answers,score,risk_level,created_at,request_id,source_name,rule_risk_level) VALUES(?,?,?,?,?,?,?,?,?)",
             UUID.randomUUID(),
             id,
             answerText,
@@ -159,7 +159,8 @@ public class DemoSeeder implements ApplicationRunner {
             PortalService.scoreLevel(actualScore, false),
             Timestamp.valueOf(today.minusDays(offset).atTime(15, 30)),
             "seed-" + i + "-" + offset,
-            "演示生成，非原问卷测评");
+            "演示生成，非原问卷测评",
+            PortalService.scoreLevel(actualScore, false));
       }
       if (!level.equals("LOW")) {
         UUID alertId = UUID.randomUUID();
@@ -170,7 +171,7 @@ public class DemoSeeder implements ApplicationRunner {
           status = "PENDING";
         }
         jdbc.update(
-            "INSERT INTO alerts VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO alerts(id,student_id,risk_level,status,reason,created_at,updated_at,assigned_to,close_reason) VALUES(?,?,?,?,?,?,?,?,?)",
             alertId,
             id,
             level,
@@ -182,14 +183,15 @@ public class DemoSeeder implements ApplicationRunner {
             status.equals("CLOSED") ? "演示复评：沟通后状态平稳，后续保持日常关注。" : null);
         if (!status.equals("PENDING") && !status.equals("ACCEPTED")) {
           jdbc.update(
-              "INSERT INTO interventions VALUES(?,?,?,?,?,?,?)",
+              "INSERT INTO interventions(id,alert_id,kind,content,next_date,author_name,created_at,follow_up_status) VALUES(?,?,?,?,?,?,?,?)",
               UUID.randomUUID(),
               alertId,
               "沟通访谈",
               "演示记录：了解近期学习安排与睡眠状况，讨论可执行的休息计划，约定下一次沟通。",
               Date.valueOf(today.plusDays(i % 5 - 1)),
               "沈老师",
-              Timestamp.valueOf(today.minusDays(2).atTime(10, 0)));
+              Timestamp.valueOf(today.minusDays(2).atTime(10, 0)),
+              status.equals("CLOSED") ? "CANCELLED" : "PLANNED");
         }
         if (!status.equals("CLOSED")) {
           service.notifyAlert(alertId, id, level, false);
