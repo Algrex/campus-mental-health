@@ -71,6 +71,27 @@ python start.py --backend-port 8081 --frontend-port 5174
 
 模型预测数据集标签，四级预警依据自评与打卡规则；两者用途独立，均不替代诊断。详细特征、参数、评估与限制见 [机器学习说明](docs/machine-learning.md)。
 
+## 成员 C：机器学习实验模块
+
+成员 C 负责数据集治理、特征与泄漏控制、多模型公平比较、验证集阈值选择、模型解释，以及模型实验页面和专项测试。责任边界如下：
+
+- `backend/src/main/java/com/algrex/campus/ml/`：数据读取、训练、评估、阈值选择、解释与推理 API。
+- `frontend/src/views/ModelsView.vue`：数据集切换、模型指标、ROC、混淆矩阵、阈值、解释与交互推理。
+- `backend/src/test/java/com/algrex/campus/MachineLearningTest.java`：双数据集独立性、数据划分、可重复性、特征排除、产物和推理验证。
+- `docs/machine-learning.md`：数据来源与许可、固定哈希、实验协议、算法参数、指标含义和局限性。
+
+当前实现将两份数据集分别训练和保存，统一使用同一划分与预处理协议比较 ZeroR、Logistic、J48 和符合规模条件时的 RandomForest。不使用平台生成的学生档案、测评或打卡数据训练模型，不把识别符、目标列或目标泄漏字段作为特征。
+
+复现 C 模块时，先准备数据，再运行专项测试：
+
+```powershell
+pwsh -NoProfile -File scripts/download-demo-data.ps1 -IncludeLifestyle
+Set-Location backend
+./mvnw --batch-mode -Dtest=MachineLearningTest test
+```
+
+两份真实规模数据都存在时，可通过 `python start.py` 启动系统，使用心理中心账号在“模型实验室”重新训练，使用辅导员账号查看实验和手动推理。RandomForest 只在实际加载数据不少于 100,000 条时启用。数据、模型和评估产物均为本地可再生文件，不应提交到 Git。
+
 ## 工程目录
 
 ```text
