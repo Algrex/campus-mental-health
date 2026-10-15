@@ -142,37 +142,61 @@ class DemoWorkflowIntegrationTest {
           .isEqualTo(403);
       JsonNode assessment = student.ok("/assessments", draft);
       assertThat(assessment.get("riskLevel").asString()).isEqualTo("CRITICAL");
+      assertThat(assessment.get("ruleRiskLevel").asString()).isEqualTo("CRITICAL");
+      assertThat(assessment.get("score").asInt()).isEqualTo(17);
+      int snapshots = count("risk_snapshots");
       assertThat(student.ok("/assessments", draft).get("id").asString())
           .isEqualTo(assessment.get("id").asString());
+      assertThat(count("assessments")).isEqualTo(1);
+      assertThat(count("risk_snapshots")).isEqualTo(snapshots);
       Map<String, Object> checkIn =
           Map.of("mood", 3, "sleepHours", 7.5, "stress", 2, "note", "integration demo");
       JsonNode first = student.ok("/check-ins", checkIn);
       snapshots = count("risk_snapshots");
       JsonNode second = student.ok("/check-ins", checkIn);
       assertThat(first.get("id").asString()).isEqualTo(second.get("id").asString());
+      assertThat(count("check_ins")).isEqualTo(1);
+      assertThat(count("risk_snapshots")).isEqualTo(snapshots);
+      JsonNode changed =
+          student.ok(
+              "/check-ins",
+              Map.of("mood", 4, "sleepHours", 8, "stress", 1, "note", "updated demo"));
+      assertThat(changed.get("id").asString()).isEqualTo(first.get("id").asString());
+      assertThat(changed.get("mood").asInt()).isEqualTo(4);
+      assertThat(changed.get("sleepHours").asDouble()).isEqualTo(8);
+      assertThat(changed.get("stress").asInt()).isEqualTo(1);
+      assertThat(changed.get("note").asString()).isEqualTo("updated demo");
+      assertThat(count("risk_snapshots")).isEqualTo(snapshots + 1);
+      JsonNode noteOnly =
+          student.ok(
+              "/check-ins",
+              Map.of("mood", 4, "sleepHours", 8, "stress", 1, "note", "note-only update"));
+      assertThat(noteOnly.get("id").asString()).isEqualTo(first.get("id").asString());
+      assertThat(noteOnly.get("note").asString()).isEqualTo("note-only update");
+      assertThat(count("risk_snapshots")).isEqualTo(snapshots + 1);
       JsonNode profile = student.get("/profile");
       assertThat(profile.get("student").get("currentScore").asInt()).isEqualTo(17);
-      String alertId = "";
-      for (JsonNode alert : staff.get("/alerts")) {
-        if (alert.get("studentId").asString().equals(DemoAccounts.studentId(0).toString())
-            && !alert.get("status").asString().equals("CLOSED")) {
-          alertId = alert.get("id").asString();
-        }
-      }
-      assertThat(alertId).isNotEmpty();
-      JsonNode current = staff.get("/alerts/" + alertId).get("alert");
-      if (current.get("status").asString().equals("PENDING")) {
-        staff.ok("/alerts/" + alertId + "/accept", Map.of());
-      }
-      staff.ok(
-          "/alerts/" + alertId + "/interventions",
-          Map.of("kind", "沟通访谈", "content", "已经沟通并约定支持安排"));
+      String alertId = onlyActiveAlert(staff).get("id").asString();
+      assertThat(count("alerts")).isEqualTo(1);
+      assertThat(staff.get("/alerts/" + alertId).get("alert").get("status").asString())
+          .isEqualTo("PENDING");
+      assertThat(staff.ok("/alerts/" + alertId + "/accept", Map.of()).get("status").asString())
+          .isEqualTo("ACCEPTED");
+      JsonNode record =
+          staff.ok(
+              "/alerts/" + alertId + "/interventions",
+              Map.of(
+                  "kind", "沟通访谈",
+                  "content", "已经沟通并约定支持安排",
+                  "nextDate", LocalDate.now().plusDays(2).toString()));
+      assertStatus(staff, alertId, "INTERVENING");
+      assertThat(record.get("followUpStatus").asString()).isEqualTo("PLANNED");
       assertThat(staff.ok("/alerts/" + alertId + "/review", Map.of()).get("status").asString())
           .isEqualTo("AWAITING_REASSESSMENT");
       JsonNode reassessment = student.ok("/assessments", assessment(0, 0));
-      assertThat(reassessment.get("riskLevel").asText()).isEqualTo("LOW");
-      assertThat(reassessment.get("ruleRiskLevel").asText()).isEqualTo("LOW");
-      assertThat(reassessment.get("id").asText()).isNotEqualTo(assessment.get("id").asText());
+      assertThat(reassessment.get("riskLevel").asString()).isEqualTo("LOW");
+      assertThat(reassessment.get("ruleRiskLevel").asString()).isEqualTo("LOW");
+      assertThat(reassessment.get("id").asString()).isNotEqualTo(assessment.get("id").asString());
       assertStatus(staff, alertId, "AWAITING_REASSESSMENT");
       assertThat(
               staff
@@ -181,14 +205,16 @@ class DemoWorkflowIntegrationTest {
                   .asString())
           .isEqualTo("CLOSED");
       assertThat(staff.get("/alerts/" + alertId).get("records").size()).isEqualTo(1);
-      assertThat(staff.get("/alerts/" + alertId).get("records").get(0).get("id").asText())
-          .isEqualTo(record.get("id").asText());
+      assertThat(staff.get("/alerts/" + alertId).get("records").get(0).get("id").asString())
+          .isEqualTo(record.get("id").asString());
       assertThat(related(staff.get("/dashboard").get("followUps"), alertId)).isEmpty();
       assertThat(contact.request("/profile", "GET", null, false, false).statusCode())
           .isEqualTo(403);
       JsonNode notices = contact.get("/notifications");
-      assertThat(notices.size()).isGreaterThan(0);
-      String notification = notices.get(0).get("id").asString();
+      List<JsonNode> relatedNotices = related(notices, alertId);
+      assertThat(relatedNotices).hasSize(1);
+      assertThat(relatedNotices.getFirst().get("recipient").asString()).isEqualTo("contact");
+      String notification = relatedNotices.getFirst().get("id").asString();
       contact.ok("/notifications/" + notification + "/read", Map.of());
       assertThat(
               related(contact.get("/notifications"), alertId).getFirst().get("isRead").asBoolean())
@@ -250,16 +276,29 @@ class DemoWorkflowIntegrationTest {
                   .post("/check-ins", Map.of("mood", 9, "sleepHours", 25, "stress", 0, "note", ""))
                   .statusCode())
           .isEqualTo(400);
-      JsonNode ownInbox = counselor.get("/notifications");
-      if (!ownInbox.isEmpty()) {
-        assertThat(
-                student
-                    .post(
-                        "/notifications/" + ownInbox.get(0).get("id").asString() + "/read",
-                        Map.of())
-                    .statusCode())
-            .isEqualTo(403);
-      }
+      assertThat(
+              student
+                  .post(
+                      "/check-ins", Map.of("mood", 2.9, "sleepHours", 7, "stress", 3.1, "note", ""))
+                  .statusCode())
+          .isEqualTo(400);
+      student.ok("/assessments", assessment(10, 0));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+      List<JsonNode> ownInbox = related(counselor.get("/notifications"), alertId);
+      assertThat(ownInbox).hasSize(1);
+      assertThat(
+              student
+                  .post(
+                      "/notifications/" + ownInbox.getFirst().get("id").asString() + "/read",
+                      Map.of())
+                  .statusCode())
+          .isEqualTo(403);
+      assertThat(
+              student
+                  .post(
+                      "/check-ins", Map.of("mood", 3, "sleepHours", 7.55, "stress", 2, "note", ""))
+                  .statusCode())
+          .isEqualTo(400);
       String code = "CSV-" + UUID.randomUUID();
       JsonNode imported =
           center.ok(
@@ -274,6 +313,241 @@ class DemoWorkflowIntegrationTest {
       assertThat(imported.get("imported").asInt()).isEqualTo(1);
       assertThat(imported.get("failed").asInt()).isEqualTo(1);
       assertThat(center.get("/students?q=" + code).size()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void invalidTransitionsAreRejectedAndManualReviewKeepsTheOriginalAssignee() throws Exception {
+    try (Browser student = new Browser();
+        Browser counselor = new Browser();
+        Browser center = new Browser()) {
+      student.login("student");
+      counselor.login("counselor");
+      center.login("center");
+      student.ok("/assessments", assessment(10, 0));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+      assertConflict(center, alertId, "review", Map.of(), "PENDING");
+      assertConflict(center, alertId, "close", Map.of("reason", "人工复评完成"), "PENDING");
+      assertConflict(center, alertId, "interventions", intervention(null), "PENDING");
+
+      JsonNode accepted = counselor.ok("/alerts/" + alertId + "/accept", Map.of());
+      assertThat(accepted.get("assignedTo").asString()).isEqualTo("陈老师");
+      assertConflict(center, alertId, "accept", Map.of(), "ACCEPTED");
+      assertConflict(center, alertId, "review", Map.of(), "ACCEPTED");
+      assertConflict(center, alertId, "close", Map.of("reason", "人工复评完成"), "ACCEPTED");
+      center.ok("/alerts/" + alertId + "/interventions", intervention(null));
+      assertStatus(center, alertId, "INTERVENING");
+      assertThat(center.get("/alerts/" + alertId).get("alert").get("assignedTo").asString())
+          .isEqualTo("陈老师");
+      center.ok("/alerts/" + alertId + "/review", Map.of());
+      assertConflict(center, alertId, "accept", Map.of(), "AWAITING_REASSESSMENT");
+      assertConflict(center, alertId, "review", Map.of(), "AWAITING_REASSESSMENT");
+      for (String reason : List.of("", "四个字内", " ".repeat(5), "长".repeat(601))) {
+        assertBadRequest(
+            center, alertId, "close", Map.of("reason", reason), "AWAITING_REASSESSMENT");
+      }
+      JsonNode closed = center.ok("/alerts/" + alertId + "/close", Map.of("reason", "人工复评好"));
+      assertThat(closed.get("status").asString()).isEqualTo("CLOSED");
+      assertThat(closed.get("assignedTo").asString()).isEqualTo("陈老师");
+      assertThat(closed.get("closeReason").asString()).isEqualTo("人工复评好");
+      assertThat(count("assessments")).isEqualTo(1);
+      assertConflict(center, alertId, "accept", Map.of(), "CLOSED");
+      assertConflict(center, alertId, "review", Map.of(), "CLOSED");
+      assertConflict(center, alertId, "close", Map.of("reason", "人工复评完成"), "CLOSED");
+      assertConflict(center, alertId, "interventions", intervention(null), "CLOSED");
+      assertThat(center.get("/alerts/" + alertId).get("records").size()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void escalationAndNewUrgentAnswersRequireInterventionAgainBeforeClosing() throws Exception {
+    try (Browser student = new Browser();
+        Browser center = new Browser()) {
+      student.login("student");
+      center.login("center");
+      student.ok("/assessments", assessment(10, 0));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+      center.ok("/alerts/" + alertId + "/accept", Map.of());
+      for (Map<String, Object> draft :
+          List.of(assessment(15, 0), assessment(20, 0), assessment(1, 1))) {
+        center.ok("/alerts/" + alertId + "/interventions", intervention(null));
+        center.ok("/alerts/" + alertId + "/review", Map.of());
+        student.ok("/assessments", draft);
+        assertThat(onlyActiveAlert(center).get("id").asString()).isEqualTo(alertId);
+        assertStatus(center, alertId, "ACCEPTED");
+        assertConflict(center, alertId, "review", Map.of(), "ACCEPTED");
+        assertConflict(center, alertId, "close", Map.of("reason", "人工复评完成"), "ACCEPTED");
+      }
+      center.ok("/alerts/" + alertId + "/interventions", intervention(null));
+      center.ok("/alerts/" + alertId + "/review", Map.of());
+      center.ok("/alerts/" + alertId + "/close", Map.of("reason", "重新干预并人工复评完成"));
+      assertStatus(center, alertId, "CLOSED");
+      assertThat(count("alerts")).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void notificationsBelongToTheCurrentCaseAndCollegeScopeIsCheckedAgainOnRead() throws Exception {
+    try (Browser student = new Browser();
+        Browser center = new Browser();
+        Browser counselor = new Browser();
+        Browser contact = new Browser()) {
+      student.login("student");
+      center.login("center");
+      counselor.login("counselor");
+      contact.login("contact");
+      student.ok("/assessments", assessment(1, 1));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+      List<JsonNode> counselorNotices = related(counselor.get("/notifications"), alertId);
+      List<JsonNode> centerNotices = related(center.get("/notifications"), alertId);
+      List<JsonNode> contactNotices = related(contact.get("/notifications"), alertId);
+      assertThat(counselorNotices).hasSize(1);
+      assertThat(centerNotices).hasSize(1);
+      assertThat(contactNotices).hasSize(1);
+      assertThat(counselorNotices.getFirst().get("recipient").asString()).isEqualTo("counselor");
+      assertThat(centerNotices.getFirst().get("recipient").asString()).isEqualTo("center");
+      assertThat(contactNotices.getFirst().get("recipient").asString()).isEqualTo("contact");
+      String notificationId = counselorNotices.getFirst().get("id").asString();
+      assertThat(center.post("/notifications/" + notificationId + "/read", Map.of()).statusCode())
+          .isEqualTo(403);
+      assertThat(contact.post("/notifications/" + notificationId + "/read", Map.of()).statusCode())
+          .isEqualTo(403);
+      assertThat(student.post("/notifications/" + notificationId + "/read", Map.of()).statusCode())
+          .isEqualTo(403);
+      assertThat(contactNotices.toString())
+          .doesNotContain("测评总分", "answers", "sleepHours", "currentScore");
+
+      JsonNode profile = center.get("/students/" + DemoAccounts.studentId(0)).get("student");
+      Map<String, Object> moved =
+          Map.of(
+              "studentCode", profile.get("studentCode").asString(),
+              "displayName", profile.get("displayName").asString(),
+              "college", "经济管理学院",
+              "major", profile.get("major").asString(),
+              "yearName", profile.get("yearName").asString(),
+              "gender", profile.get("gender").asString(),
+              "age", profile.get("age").asInt(),
+              "contactName", profile.get("contactName").asString());
+      HttpResponse<String> transferred =
+          center.request(
+              "/students/" + DemoAccounts.studentId(0),
+              "PUT",
+              json.writeValueAsString(moved),
+              true,
+              false);
+      assertThat(transferred.statusCode()).withFailMessage(transferred.body()).isEqualTo(200);
+      assertThat(related(counselor.get("/notifications"), alertId)).isEmpty();
+      assertThat(
+              counselor.post("/notifications/" + notificationId + "/read", Map.of()).statusCode())
+          .isEqualTo(403);
+      assertThat(counselor.request("/alerts/" + alertId, "GET", null, false, false).statusCode())
+          .isEqualTo(403);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT is_read FROM notifications WHERE id=?",
+                  Boolean.class,
+                  UUID.fromString(notificationId)))
+          .isFalse();
+      assertThat(related(center.get("/notifications"), alertId)).hasSize(1);
+      assertThat(related(contact.get("/notifications"), alertId)).hasSize(1);
+    }
+  }
+
+  @Test
+  void concurrentSignalsAndRequestRetriesKeepOneActiveAlert() throws Exception {
+    try (Browser first = new Browser();
+        Browser second = new Browser();
+        Browser center = new Browser()) {
+      first.login("student");
+      second.login("student");
+      center.login("center");
+      CompletableFuture<HttpResponse<String>> firstResult =
+          postAsync(first, "/assessments", assessment(15, 0));
+      CompletableFuture<HttpResponse<String>> secondResult =
+          postAsync(second, "/assessments", assessment(20, 0));
+      assertOk(firstResult.get(20, TimeUnit.SECONDS));
+      assertOk(secondResult.get(20, TimeUnit.SECONDS));
+      assertThat(count("assessments")).isEqualTo(2);
+      assertThat(count("risk_snapshots")).isEqualTo(2);
+      assertThat(count("alerts")).isEqualTo(1);
+      assertThat(onlyActiveAlert(center).get("riskLevel").asString()).isEqualTo("CRITICAL");
+
+      resetDemoStudent();
+      Map<String, Object> retry = assessment(15, 0);
+      firstResult = postAsync(first, "/assessments", retry);
+      secondResult = postAsync(second, "/assessments", retry);
+      JsonNode firstResponse = assertOk(firstResult.get(20, TimeUnit.SECONDS));
+      JsonNode secondResponse = assertOk(secondResult.get(20, TimeUnit.SECONDS));
+      assertThat(firstResponse.get("id").asString()).isEqualTo(secondResponse.get("id").asString());
+      assertThat(count("assessments")).isEqualTo(1);
+      assertThat(count("risk_snapshots")).isEqualTo(1);
+      assertThat(count("alerts")).isEqualTo(1);
+      assertThat(onlyActiveAlert(center).get("riskLevel").asString()).isEqualTo("HIGH");
+    }
+  }
+
+  @Test
+  void concurrentAcceptsHaveExactlyOneWinner() throws Exception {
+    try (Browser student = new Browser();
+        Browser center = new Browser();
+        Browser counselor = new Browser()) {
+      student.login("student");
+      center.login("center");
+      counselor.login("counselor");
+      student.ok("/assessments", assessment(10, 0));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+
+      CompletableFuture<HttpResponse<String>> centerResult =
+          postAsync(center, "/alerts/" + alertId + "/accept", Map.of());
+      CompletableFuture<HttpResponse<String>> counselorResult =
+          postAsync(counselor, "/alerts/" + alertId + "/accept", Map.of());
+      HttpResponse<String> centerResponse = centerResult.get(20, TimeUnit.SECONDS);
+      HttpResponse<String> counselorResponse = counselorResult.get(20, TimeUnit.SECONDS);
+      assertThat(List.of(centerResponse.statusCode(), counselorResponse.statusCode()))
+          .containsExactlyInAnyOrder(200, 409);
+      HttpResponse<String> winner =
+          centerResponse.statusCode() == 200 ? centerResponse : counselorResponse;
+      JsonNode accepted = assertOk(winner);
+      assertThat(accepted.get("status").asString()).isEqualTo("ACCEPTED");
+      assertThat(center.get("/alerts/" + alertId).get("alert").get("assignedTo").asString())
+          .isEqualTo(accepted.get("assignedTo").asString());
+      assertThat(count("alerts")).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void concurrentEscalationAndCloseNeverReopenAClosedCase() throws Exception {
+    try (Browser student = new Browser();
+        Browser center = new Browser()) {
+      student.login("student");
+      center.login("center");
+      student.ok("/assessments", assessment(10, 0));
+      String alertId = onlyActiveAlert(center).get("id").asString();
+      center.ok("/alerts/" + alertId + "/accept", Map.of());
+      center.ok("/alerts/" + alertId + "/interventions", intervention(null));
+      center.ok("/alerts/" + alertId + "/review", Map.of());
+
+      CompletableFuture<HttpResponse<String>> closeResult =
+          postAsync(center, "/alerts/" + alertId + "/close", Map.of("reason", "人工复评完成，恢复日常支持"));
+      CompletableFuture<HttpResponse<String>> signalResult =
+          postAsync(student, "/assessments", assessment(15, 0));
+      HttpResponse<String> closeResponse = closeResult.get(20, TimeUnit.SECONDS);
+      assertOk(signalResult.get(20, TimeUnit.SECONDS));
+      assertThat(closeResponse.statusCode()).withFailMessage(closeResponse.body()).isIn(200, 409);
+      JsonNode original = center.get("/alerts/" + alertId).get("alert");
+      JsonNode active = onlyActiveAlert(center);
+      assertThat(active.get("riskLevel").asString()).isEqualTo("HIGH");
+      if (closeResponse.statusCode() == 200) {
+        assertThat(original.get("status").asString()).isEqualTo("CLOSED");
+        assertThat(active.get("id").asString()).isNotEqualTo(alertId);
+        assertThat(active.get("status").asString()).isEqualTo("PENDING");
+        assertThat(count("alerts")).isEqualTo(2);
+      } else {
+        assertThat(original.get("status").asString()).isEqualTo("ACCEPTED");
+        assertThat(active.get("id").asString()).isEqualTo(alertId);
+        assertThat(count("alerts")).isEqualTo(1);
+      }
+      assertThat(center.get("/alerts/" + alertId).get("records").size()).isEqualTo(1);
     }
   }
 
@@ -491,5 +765,103 @@ class DemoWorkflowIntegrationTest {
               center.request("/ml/summary?dataset=survey", "GET", null, false, false).statusCode())
           .isEqualTo(200);
     }
+  }
+
+  private int count(String table) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM " + table + " WHERE student_id=?",
+        Integer.class,
+        DemoAccounts.studentId(0));
+  }
+
+  private Map<String, Object> assessment(int score, int urgentAnswer) {
+    List<Integer> answers = new ArrayList<>();
+    int remaining = score - urgentAnswer;
+    for (int index = 0; index < 8; index++) {
+      int answer = Math.min(3, remaining);
+      answers.add(answer);
+      remaining -= answer;
+    }
+    assertThat(remaining).isZero();
+    answers.add(urgentAnswer);
+    return Map.of("answers", answers, "requestId", UUID.randomUUID().toString());
+  }
+
+  private Map<String, Object> intervention(LocalDate nextDate) {
+    return nextDate == null
+        ? Map.of("kind", "沟通访谈", "content", "已经沟通并约定支持安排")
+        : Map.of(
+            "kind", "沟通访谈",
+            "content", "已经沟通并约定支持安排",
+            "nextDate", nextDate.toString());
+  }
+
+  private JsonNode onlyActiveAlert(Browser staff) throws Exception {
+    List<JsonNode> active = new ArrayList<>();
+    for (JsonNode row : staff.get("/alerts")) {
+      if (row.get("studentId").asString().equals(DemoAccounts.studentId(0).toString())
+          && !row.get("status").asString().equals("CLOSED")) {
+        active.add(row);
+      }
+    }
+    assertThat(active).hasSize(1);
+    return active.getFirst();
+  }
+
+  private List<JsonNode> related(JsonNode rows, String alertId) {
+    List<JsonNode> result = new ArrayList<>();
+    for (JsonNode row : rows) {
+      if (row.hasNonNull("alertId") && row.get("alertId").asString().equals(alertId)) {
+        result.add(row);
+      }
+    }
+    return result;
+  }
+
+  private void assertStatus(Browser staff, String alertId, String status) throws Exception {
+    assertThat(staff.get("/alerts/" + alertId).get("alert").get("status").asString())
+        .isEqualTo(status);
+  }
+
+  private void assertConflict(
+      Browser staff, String alertId, String action, Object draft, String unchangedStatus)
+      throws Exception {
+    assertRejected(staff, alertId, action, draft, unchangedStatus, 409);
+  }
+
+  private void assertBadRequest(
+      Browser staff, String alertId, String action, Object draft, String unchangedStatus)
+      throws Exception {
+    assertRejected(staff, alertId, action, draft, unchangedStatus, 400);
+  }
+
+  private void assertRejected(
+      Browser staff,
+      String alertId,
+      String action,
+      Object draft,
+      String unchangedStatus,
+      int expectedStatus)
+      throws Exception {
+    HttpResponse<String> response = staff.post("/alerts/" + alertId + "/" + action, draft);
+    assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(expectedStatus);
+    assertStatus(staff, alertId, unchangedStatus);
+  }
+
+  private CompletableFuture<HttpResponse<String>> postAsync(
+      Browser browser, String path, Object value) {
+    return CompletableFuture.supplyAsync(
+        () -> {
+          try {
+            return browser.post(path, value);
+          } catch (Exception exception) {
+            throw new CompletionException(exception);
+          }
+        });
+  }
+
+  private JsonNode assertOk(HttpResponse<String> response) throws Exception {
+    assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
+    return json.readTree(response.body());
   }
 }

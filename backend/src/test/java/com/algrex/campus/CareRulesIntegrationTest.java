@@ -21,8 +21,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Transactional
@@ -115,7 +117,7 @@ class CareRulesIntegrationTest {
         "UPDATE check_ins SET sleep_hours=5 WHERE student_id=? AND check_date=?",
         studentId,
         Date.valueOf(LocalDate.now().minusDays(6)));
-    Map<String, Object> second = checkIn(3, "4.5", 2);
+    Map<String, Object> second = checkIn(4, "4.5", 2);
     assertThat(second.get("id")).isEqualTo(first.get("id"));
     assertThat(service.student(accounts.get("center"), studentId).get("riskLevel"))
         .isEqualTo("LOW");
@@ -138,7 +140,7 @@ class CareRulesIntegrationTest {
   }
 
   @Test
-  void repeatedEvaluationsDeduplicateAlertsAndEscalationNotifications() {
+  void sameLevelSignalsDeduplicateButNewUrgentAssessmentsNotifyAgain() {
     assess(10, false);
     List<Map<String, Object>> alerts =
         service.rows("SELECT * FROM alerts WHERE student_id=?", studentId);
@@ -158,7 +160,12 @@ class CareRulesIntegrationTest {
     int escalated = service.rows("SELECT * FROM notifications WHERE alert_id=?", alertId).size();
     assess(2, true);
     assertThat(service.rows("SELECT * FROM notifications WHERE alert_id=?", alertId))
-        .hasSize(escalated);
+        .hasSize(escalated + 3);
+    assertThat(service.rows("SELECT * FROM alerts WHERE student_id=?", studentId)).hasSize(1);
+    assertThat(
+            service.rows(
+                "SELECT * FROM notifications WHERE alert_id=? AND recipient='contact'", alertId))
+        .hasSize(2);
     assertThat(
             service
                 .rows(
@@ -180,13 +187,10 @@ class CareRulesIntegrationTest {
                 .toString());
     var staff = accounts.get("center");
     var record = new InterventionDraft("沟通访谈", "明确约定后续支持安排", LocalDate.now().plusDays(1));
-    assertThatThrownBy(() -> service.transition(staff, alertId, "review", null))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> service.intervention(staff, alertId, record))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertConflict(() -> service.transition(staff, alertId, "review", null));
+    assertConflict(() -> service.intervention(staff, alertId, record));
     service.transition(staff, alertId, "accept", null);
-    assertThatThrownBy(() -> service.transition(staff, alertId, "accept", null))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertConflict(() -> service.transition(staff, alertId, "accept", null));
     service.intervention(staff, alertId, record);
     assertThat(service.followUps(staff))
         .anySatisfy(row -> assertThat(row).containsEntry("alertId", alertId.toString()));
@@ -194,11 +198,17 @@ class CareRulesIntegrationTest {
     assertThatThrownBy(() -> service.transition(staff, alertId, "close", "短"))
         .isInstanceOf(IllegalArgumentException.class);
     service.transition(staff, alertId, "close", "人工复评完成并保留持续支持");
-    assertThatThrownBy(() -> service.intervention(staff, alertId, record))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertConflict(() -> service.intervention(staff, alertId, record));
     assertThat(service.rows("SELECT * FROM interventions WHERE alert_id=?", alertId)).hasSize(1);
     assertThat(service.student(staff, studentId).get("riskLevel")).isEqualTo("MEDIUM");
     assess(10, false);
     assertThat(service.rows("SELECT * FROM alerts WHERE student_id=?", studentId)).hasSize(2);
+  }
+
+  private void assertConflict(Runnable action) {
+    assertThatThrownBy(action::run)
+        .isInstanceOfSatisfying(
+            ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
   }
 }
