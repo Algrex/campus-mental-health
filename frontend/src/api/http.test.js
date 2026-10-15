@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {getJson, post, setCsrfToken} from './http.js';
+import {getJson, post, request, setCsrfToken} from './http.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -46,5 +46,44 @@ describe('API requests', () => {
     vi.stubGlobal('fetch', fetchMock);
     await getJson('/api/v1/system/info', {signal: controller.signal});
     expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it('handles empty logout responses and URL-encoded login', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ok: true, status: 204})
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true})});
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await post('/api/v1/auth/logout')).toBeNull();
+    await request('/api/v1/auth/login', {
+      method: 'POST',
+      form: true,
+      body: {username: 'center', password: 'a&b'},
+    });
+    expect(fetchMock.mock.calls[1][1].body).toBe(
+      'username=center&password=a%26b',
+    );
+  });
+  it('dispatches session expiry only for protected APIs', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({message: '会话已失效'}),
+      }),
+    );
+    const listener = vi.fn();
+    window.addEventListener('session-expired', listener);
+    try {
+      await expect(getJson('/api/v1/students')).rejects.toThrow('会话已失效');
+      expect(listener).toHaveBeenCalledTimes(1);
+      await expect(post('/api/v1/auth/login', {})).rejects.toThrow(
+        '会话已失效',
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('session-expired', listener);
+    }
   });
 });

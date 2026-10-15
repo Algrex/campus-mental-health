@@ -35,3 +35,7 @@ models/artifacts/**
 *.code-workspace
 .DS_Store
 Thumbs.db
+
+# Python launcher bytecode
+__pycache__/
+*.py[cod]

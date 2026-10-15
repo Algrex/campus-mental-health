@@ -69,7 +69,7 @@ class DemoWorkflowIntegrationTest {
     }
 
     void login(String username) throws Exception {
-      csrf = get("/auth/session").get("csrfToken").asText();
+      csrf = get("/auth/session").get("csrfToken").asString();
       HttpResponse<String> response =
           request(
               "/auth/login",
@@ -79,8 +79,8 @@ class DemoWorkflowIntegrationTest {
               true);
       assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
       JsonNode session = get("/auth/session");
-      csrf = session.get("csrfToken").asText();
-      assertThat(session.get("user").get("username").asText()).isEqualTo(username);
+      csrf = session.get("csrfToken").asString();
+      assertThat(session.get("user").get("username").asString()).isEqualTo(username);
     }
 
     @Override
@@ -109,45 +109,45 @@ class DemoWorkflowIntegrationTest {
                   .statusCode())
           .isEqualTo(403);
       JsonNode assessment = student.ok("/assessments", draft);
-      assertThat(assessment.get("riskLevel").asText()).isEqualTo("CRITICAL");
-      assertThat(student.ok("/assessments", draft).get("id").asText())
-          .isEqualTo(assessment.get("id").asText());
+      assertThat(assessment.get("riskLevel").asString()).isEqualTo("CRITICAL");
+      assertThat(student.ok("/assessments", draft).get("id").asString())
+          .isEqualTo(assessment.get("id").asString());
       Map<String, Object> checkIn =
           Map.of("mood", 3, "sleepHours", 7.5, "stress", 2, "note", "integration demo");
       JsonNode first = student.ok("/check-ins", checkIn);
       JsonNode second = student.ok("/check-ins", checkIn);
-      assertThat(first.get("id").asText()).isEqualTo(second.get("id").asText());
+      assertThat(first.get("id").asString()).isEqualTo(second.get("id").asString());
       JsonNode profile = student.get("/profile");
       assertThat(profile.get("student").get("currentScore").asInt()).isEqualTo(17);
       String alertId = "";
       for (JsonNode alert : staff.get("/alerts")) {
-        if (alert.get("studentId").asText().equals(DemoAccounts.studentId(0).toString())
-            && !alert.get("status").asText().equals("CLOSED")) {
-          alertId = alert.get("id").asText();
+        if (alert.get("studentId").asString().equals(DemoAccounts.studentId(0).toString())
+            && !alert.get("status").asString().equals("CLOSED")) {
+          alertId = alert.get("id").asString();
         }
       }
       assertThat(alertId).isNotEmpty();
       JsonNode current = staff.get("/alerts/" + alertId).get("alert");
-      if (current.get("status").asText().equals("PENDING")) {
+      if (current.get("status").asString().equals("PENDING")) {
         staff.ok("/alerts/" + alertId + "/accept", Map.of());
       }
       staff.ok(
           "/alerts/" + alertId + "/interventions",
           Map.of("kind", "沟通访谈", "content", "已经沟通并约定支持安排"));
-      assertThat(staff.ok("/alerts/" + alertId + "/review", Map.of()).get("status").asText())
+      assertThat(staff.ok("/alerts/" + alertId + "/review", Map.of()).get("status").asString())
           .isEqualTo("AWAITING_REASSESSMENT");
       assertThat(
               staff
                   .ok("/alerts/" + alertId + "/close", Map.of("reason", "人工复评完成，继续日常支持"))
                   .get("status")
-                  .asText())
+                  .asString())
           .isEqualTo("CLOSED");
       assertThat(staff.get("/alerts/" + alertId).get("records").size()).isGreaterThan(0);
       assertThat(contact.request("/profile", "GET", null, false, false).statusCode())
           .isEqualTo(403);
       JsonNode notices = contact.get("/notifications");
       assertThat(notices.size()).isGreaterThan(0);
-      String notification = notices.get(0).get("id").asText();
+      String notification = notices.get(0).get("id").asString();
       contact.ok("/notifications/" + notification + "/read", Map.of());
       assertThat(contact.get("/notifications").get(0).get("isRead").asBoolean()).isTrue();
       assertThat(notices.toString()).doesNotContain("测评总分", "answers", "sleepHours");
@@ -167,9 +167,9 @@ class DemoWorkflowIntegrationTest {
       JsonNode collegeDashboard = counselor.get("/dashboard");
       assertThat(collegeDashboard.get("stats").get("students").asInt())
           .isEqualTo(counselor.get("/students").size());
-      assertThat(collegeDashboard.get("trend").get(0).get("day").asText()).isNotBlank();
+      assertThat(collegeDashboard.get("trend").get(0).get("day").asString()).isNotBlank();
       for (JsonNode row : counselor.get("/students")) {
-        assertThat(row.get("college").asText()).isEqualTo("计算机学院");
+        assertThat(row.get("college").asString()).isEqualTo("计算机学院");
       }
       assertThat(
               counselor
@@ -201,7 +201,8 @@ class DemoWorkflowIntegrationTest {
         assertThat(
                 student
                     .post(
-                        "/notifications/" + ownInbox.get(0).get("id").asText() + "/read", Map.of())
+                        "/notifications/" + ownInbox.get(0).get("id").asString() + "/read",
+                        Map.of())
                     .statusCode())
             .isEqualTo(403);
       }
@@ -219,6 +220,222 @@ class DemoWorkflowIntegrationTest {
       assertThat(imported.get("imported").asInt()).isEqualTo(1);
       assertThat(imported.get("failed").asInt()).isEqualTo(1);
       assertThat(center.get("/students?q=" + code).size()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  void loginLogoutAndAnonymousAccessRespectSessionAndCsrf() throws Exception {
+    try (Browser browser = new Browser()) {
+      assertThat(browser.get("/auth/session").get("user").isNull()).isTrue();
+      for (String path :
+          List.of(
+              "/dashboard",
+              "/students",
+              "/profile",
+              "/alerts",
+              "/follow-ups",
+              "/notifications",
+              "/ml/summary")) {
+        assertThat(browser.request(path, "GET", null, false, false).statusCode()).isEqualTo(401);
+      }
+      browser.csrf = browser.get("/auth/session").get("csrfToken").asString();
+      assertThat(
+              browser
+                  .request("/auth/login", "POST", "username=center&password=wrong", true, true)
+                  .statusCode())
+          .isEqualTo(401);
+      browser.login("center");
+      assertThat(browser.request("/auth/logout", "POST", "{}", false, false).statusCode())
+          .isEqualTo(403);
+      assertThat(browser.post("/auth/logout", Map.of()).statusCode()).isEqualTo(204);
+      assertThat(browser.get("/auth/session").get("user").isNull()).isTrue();
+      assertThat(browser.request("/students", "GET", null, false, false).statusCode())
+          .isEqualTo(401);
+      browser.login("student");
+    }
+  }
+
+  @Test
+  void studentCrudFilteringAndCsvValidationPreserveCollegeScope() throws Exception {
+    try (Browser center = new Browser();
+        Browser counselor = new Browser();
+        Browser student = new Browser()) {
+      center.login("center");
+      counselor.login("counselor");
+      student.login("student");
+      String code = "QA-" + UUID.randomUUID();
+      Map<String, Object> draft =
+          new java.util.HashMap<>(
+              Map.of(
+                  "studentCode",
+                  code,
+                  "displayName",
+                  "回归测试同学",
+                  "college",
+                  "计算机学院",
+                  "major",
+                  "测试专业",
+                  "yearName",
+                  "大二",
+                  "gender",
+                  "女",
+                  "age",
+                  20,
+                  "contactName",
+                  "测试联系人"));
+      JsonNode created = center.ok("/students", draft);
+      String path = "/students/" + created.get("id").asString();
+      assertThat(center.post("/students", draft).statusCode()).isEqualTo(409);
+      assertThat(student.post("/students", draft).statusCode()).isEqualTo(403);
+      assertThat(center.get("/students?q=" + code)).hasSize(1);
+      assertThat(
+              center.get(
+                  "/students?college="
+                      + java.net.URLEncoder.encode("计算机学院", java.nio.charset.StandardCharsets.UTF_8)
+                      + "&level=LOW&q="
+                      + code))
+          .hasSize(1);
+      assertThat(center.get("/students?level=HIGH&q=" + code)).isEmpty();
+      draft.put("displayName", "回归修改同学");
+      assertThat(
+              counselor
+                  .request(path, "PUT", json.writeValueAsString(draft), true, false)
+                  .statusCode())
+          .isEqualTo(200);
+      assertThat(center.get(path).get("student").get("displayName").asString()).isEqualTo("回归修改同学");
+      draft.put("college", "人文学院");
+      assertThat(
+              counselor
+                  .request(path, "PUT", json.writeValueAsString(draft), true, false)
+                  .statusCode())
+          .isEqualTo(403);
+      assertThat(
+              center.request(path, "PUT", json.writeValueAsString(draft), true, false).statusCode())
+          .isEqualTo(200);
+      assertThat(counselor.request(path, "GET", null, false, false).statusCode()).isEqualTo(403);
+      draft.put("age", 15);
+      assertThat(center.post("/students", draft).statusCode()).isEqualTo(400);
+      assertThat(center.post("/students", Map.of()).statusCode()).isEqualTo(400);
+      assertThat(center.post("/students/import", Map.of("csv", "bad,header\nx,y")).statusCode())
+          .isEqualTo(400);
+      assertThat(center.post("/students/import", Map.of("csv", "\"unclosed")).statusCode())
+          .isEqualTo(400);
+      JsonNode imported =
+          counselor.ok(
+              "/students/import",
+              Map.of(
+                  "csv",
+                  "\ufeff学号,姓名,学院,专业,年级,性别\r\n"
+                      + code
+                      + "-C,导入同学,计算机学院,测试,大一,女\r\n"
+                      + code
+                      + "-O,越权同学,人文学院,测试,大一,女\r\n"
+                      + code
+                      + "-B,,计算机学院,测试,大一,女\r\n"));
+      assertThat(imported.get("imported").asInt()).isEqualTo(1);
+      assertThat(imported.get("failed").asInt()).isEqualTo(2);
+      assertThat(
+              center
+                  .request("/students/" + UUID.randomUUID(), "GET", null, false, false)
+                  .statusCode())
+          .isEqualTo(400);
+      assertThat(center.request("/students/not-a-uuid", "GET", null, false, false).statusCode())
+          .isEqualTo(400);
+    }
+  }
+
+  @Test
+  void roleMatrixProtectsEveryBusinessReadAndWriteFamily() throws Exception {
+    try (Browser contact = new Browser();
+        Browser student = new Browser();
+        Browser counselor = new Browser();
+        Browser center = new Browser()) {
+      contact.login("contact");
+      student.login("student");
+      counselor.login("counselor");
+      center.login("center");
+      for (String path :
+          List.of("/dashboard", "/students", "/alerts", "/follow-ups", "/ml/summary")) {
+        assertThat(contact.request(path, "GET", null, false, false).statusCode())
+            .as(path)
+            .isEqualTo(403);
+        assertThat(student.request(path, "GET", null, false, false).statusCode())
+            .as(path)
+            .isEqualTo(403);
+      }
+      assertThat(center.request("/profile", "GET", null, false, false).statusCode()).isEqualTo(403);
+      assertThat(counselor.request("/profile", "GET", null, false, false).statusCode())
+          .isEqualTo(403);
+      for (Browser browser : List.of(center, counselor, contact)) {
+        assertThat(
+                browser
+                    .post(
+                        "/assessments",
+                        Map.of(
+                            "answers",
+                            List.of(0, 0, 0, 0, 0, 0, 0, 0, 0),
+                            "requestId",
+                            UUID.randomUUID().toString()))
+                    .statusCode())
+            .isEqualTo(403);
+        assertThat(
+                browser
+                    .post("/check-ins", Map.of("mood", 3, "sleepHours", 8, "stress", 2, "note", ""))
+                    .statusCode())
+            .isEqualTo(403);
+      }
+      for (Browser browser : List.of(student, contact, counselor)) {
+        assertThat(browser.post("/ml/train", Map.of("dataset", "survey")).statusCode())
+            .isEqualTo(403);
+      }
+      assertThat(
+              center.request("/ml/summary?dataset=invalid", "GET", null, false, false).statusCode())
+          .isEqualTo(400);
+      assertThat(center.post("/ml/train", Map.of("dataset", "invalid")).statusCode())
+          .isEqualTo(400);
+      assertThat(
+              center
+                  .post("/ml/predict", Map.of("age", 15, "gender", "Other", "cgpa", 5))
+                  .statusCode())
+          .isEqualTo(400);
+      assertThat(
+              student
+                  .post(
+                      "/assessments",
+                      Map.of("answers", List.of(0, 0, 0, 0, 0, 0, 0, 0), "requestId", "short"))
+                  .statusCode())
+          .isEqualTo(400);
+      assertThat(
+              student
+                  .post(
+                      "/check-ins",
+                      Map.of("mood", 3, "sleepHours", 8, "stress", 2, "note", "x".repeat(601)))
+                  .statusCode())
+          .isEqualTo(400);
+      String foreignId = "";
+      for (JsonNode alert : center.get("/alerts")) {
+        if (!alert.get("college").asString().equals("计算机学院")) {
+          foreignId = alert.get("id").asString();
+          break;
+        }
+      }
+      assertThat(foreignId).isNotBlank();
+      assertThat(counselor.request("/alerts/" + foreignId, "GET", null, false, false).statusCode())
+          .isEqualTo(403);
+      assertThat(counselor.post("/alerts/" + foreignId + "/accept", Map.of()).statusCode())
+          .isEqualTo(403);
+      assertThat(
+              counselor
+                  .post(
+                      "/alerts/" + foreignId + "/interventions",
+                      Map.of("kind", "沟通访谈", "content", "不应写入其他学院个案"))
+                  .statusCode())
+          .isEqualTo(403);
+      assertThat(counselor.get("/follow-ups"))
+          .allSatisfy(row -> assertThat(row.get("college").asString()).isEqualTo("计算机学院"));
+      assertThat(
+              center.request("/ml/summary?dataset=survey", "GET", null, false, false).statusCode())
+          .isEqualTo(200);
     }
   }
 }

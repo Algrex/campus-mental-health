@@ -33,6 +33,7 @@ watch(
     tab.value = 'overview';
     load();
   },
+  {immediate: true},
 );
 </script>
 <template>
