@@ -4,9 +4,11 @@ import {useRoute, useRouter} from 'vue-router';
 import {ElMessage} from 'element-plus';
 import {session, logout, refreshInbox, roleNames} from './state/session.js';
 import Icon from './components/Icon.vue';
+// route 用于读取当前路径和页面标题，router 用于执行跳转。
 const route = useRoute();
 const router = useRouter();
 const menuOpen = ref(false);
+// 心理中心和辅导员共用工作端导航，具体数据范围由后端权限控制。
 const staffLinks = [
   {path: '/', title: '总览工作台', icon: 'grid'},
   {path: '/students', title: '学生档案', icon: 'users'},
@@ -20,6 +22,8 @@ const studentLinks = [
   {path: '/assessments', title: '心理自评', icon: 'clipboard'},
   {path: '/check-ins', title: '每日打卡', icon: 'sun'},
 ];
+// 根据登录身份生成导航：学生使用个人页面，联系人仅保留消息中心。
+// 菜单隐藏仅控制界面入口，不能替代路由检查和后端授权。
 const links = computed(() => [
   ...(session.user?.role === 'STUDENT'
     ? studentLinks
@@ -28,12 +32,14 @@ const links = computed(() => [
       : staffLinks),
   {path: '/notifications', title: '消息中心', icon: 'mail'},
 ]);
+// 从共享收件箱计算未读数，同时用于侧栏数字和顶部消息提醒。
 const unread = computed(() => session.inbox.filter((n) => !n.isRead).length);
 const today = new Intl.DateTimeFormat('zh-CN', {
   month: 'long',
   day: 'numeric',
   weekday: 'long',
 }).format(new Date());
+// 首次进入及路径变化时关闭移动端菜单，并为已登录用户刷新收件箱。
 watch(
   () => route.path,
   async () => {
@@ -48,6 +54,8 @@ watch(
   },
   {immediate: true},
 );
+// 退出成功后替换当前历史记录，避免本次跳转留下工作页作为直接返回项。
+// 退出失败时显示错误提示，不执行登录页跳转。
 async function signOut() {
   try {
     await logout();
@@ -58,6 +66,7 @@ async function signOut() {
 }
 </script>
 <template>
+  <!-- 登录页独立显示；登录后的业务页面共用侧栏、顶栏和内容区域。 -->
   <router-view v-if="route.path === '/login'" />
   <div v-else-if="session.user" class="app-shell">
     <div v-if="menuOpen" class="nav-backdrop" @click="menuOpen = false"></div>
@@ -136,6 +145,7 @@ async function signOut() {
           </button>
         </div>
       </header>
+      <!-- 路由出口：随地址切换具体业务页面，保留外层导航布局。 -->
       <main class="main-content"><router-view /></main>
       <footer class="app-footer">
         <span>心晴校园 · 让关怀触手可及</span

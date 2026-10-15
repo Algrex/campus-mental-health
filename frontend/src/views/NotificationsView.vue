@@ -9,16 +9,21 @@ import Icon from '../components/Icon.vue';
 import PageState from '../components/PageState.vue';
 import CaseDrawer from '../components/CaseDrawer.vue';
 const tab = ref('all');
+// 保存通知关联的预警 ID，供工作人员在本页打开个案详情。
 const selected = ref('');
 const saving = ref(false);
+// 收件箱使用共享会话状态，消息列表与 App 中的未读提醒读取同一份数据。
 const {busy, error, reload} = useLoad(refreshInbox);
+// 已读状态变化后自动更新未读集合；标签切换只筛选本地收件箱。
 const unread = computed(() => session.inbox.filter((r) => !r.isRead));
 const filtered = computed(() =>
   tab.value === 'unread' ? unread.value : session.inbox,
 );
+// 仅工作人员展示个案入口；通知内容与个案访问范围仍由后端授权控制。
 const staff = computed(() =>
   ['CENTER', 'COUNSELOR'].includes(session.user.role),
 );
+// 单条已读请求成功后才更新共享记录，失败时保留原状态并提示错误。
 async function read(row) {
   try {
     await api.read(row.id);
@@ -27,6 +32,8 @@ async function read(row) {
     ElMessage.error(e.message);
   }
 }
+// 并行提交当前未读通知，全部成功后重新获取收件箱以同步服务端状态。
+// Promise.all 失败不会撤销已成功的请求；saving 在 finally 中恢复。
 async function readAll() {
   saving.value = true;
   try {
@@ -53,6 +60,7 @@ async function readAll() {
         }}
       </p>
     </div>
+    <!-- 批量操作期间或没有未读消息时禁用按钮，避免重复触发批量请求。 -->
     <button class="btn" :disabled="saving || !unread.length" @click="readAll">
       <Icon name="check" :size="17" />全部标为已读
     </button>
@@ -124,5 +132,6 @@ async function readAll() {
       </article></PageState
     >
   </section>
+  <!-- 学生与联系人不挂载个案抽屉；工作人员点击通知时打开详情并提交已读请求。 -->
   <CaseDrawer v-if="staff" v-model="selected" />
 </template>

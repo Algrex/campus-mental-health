@@ -12,8 +12,11 @@ import LevelBadge from '../components/LevelBadge.vue';
 import PageState from '../components/PageState.vue';
 import CaseDrawer from '../components/CaseDrawer.vue';
 const router = useRouter();
+// dashboard 接口统一返回统计、趋势、等级分布、优先个案和随访数据。
 const data = ref(null);
+// selected 保存预警个案 ID；优先关注和随访列表共用同一个详情抽屉。
 const selected = ref('');
+// useLoad 管理加载和错误状态，reload 供页面刷新、失败重试及个案更新后复用。
 const {busy, error, reload} = useLoad(async () => {
   data.value = await api.dashboard();
 });
@@ -34,6 +37,7 @@ const stats = computed(() =>
           note: '在册学生健康档案',
         },
         {
+          // 展示后端计算的覆盖率，前端仅添加百分号和对应进度条。
           label: '测评覆盖率',
           value: data.value.stats.assessmentRate,
           unit: '%',
@@ -42,6 +46,7 @@ const stats = computed(() =>
           note: '已完成至少一次心理自评',
         },
         {
+          // 关注人数来自业务规则分级，与模型实验室的预测概率不同。
           label: '需要关注',
           value: data.value.stats.attention,
           unit: '人',
@@ -50,6 +55,7 @@ const stats = computed(() =>
           note: '按当前规则分级的学生',
         },
         {
+          // pending 表示待受理数量，activeAlerts 表示仍在跟进的个案总数。
           label: '待受理预警',
           value: data.value.stats.pending,
           unit: '条',
