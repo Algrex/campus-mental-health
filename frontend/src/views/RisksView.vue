@@ -9,16 +9,22 @@ import LevelBadge from '../components/LevelBadge.vue';
 import PageState from '../components/PageState.vue';
 import StudentDrawer from '../components/StudentDrawer.vue';
 import Icon from '../components/Icon.vue';
+// dashboard 数据用于趋势和等级分布，学生列表用于下方的关注名单。
 const data = ref(null);
 const rows = ref([]);
+// 空字符串表示不限定关注等级；选择等级后只筛选名单，不改变上方统计和图表。
 const level = ref('');
+// 点击“查看变化”时保存学生 ID，由 StudentDrawer 加载对应档案详情。
 const selected = ref('');
+// 两个独立接口并行加载，均成功后更新页面数据；加载和失败重试由 useLoad 管理。
 const {busy, error, reload} = useLoad(async () => {
   [data.value, rows.value] = await Promise.all([
     api.dashboard(),
     api.students(),
   ]);
 });
+// 名单始终排除 LOW（常规关注），再按所选等级过滤后端已授权的学生数据。
+// riskLevel 来自后端业务规则，本页不调用机器学习模型重新计算等级。
 const attention = computed(() =>
   rows.value.filter(
     (r) =>
@@ -64,6 +70,7 @@ const attention = computed(() =>
           </p>
         </article>
       </div>
+      <!-- 趋势使用每日测评分数均值，分布使用学生最新关注等级，统计含义不同。 -->
       <div class="dashboard-charts">
         <article class="card">
           <div class="card-heading">
@@ -147,6 +154,7 @@ const attention = computed(() =>
         </div>
         <div v-if="!attention.length" class="state">当前筛选没有关注记录</div>
       </article>
+      <!-- 此处只展示规则说明，实际计分、打卡评估和预警更新由后端执行。 -->
       <div class="rule-note">
         <Icon name="shield" :size="20" />
         <div>
