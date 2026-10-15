@@ -1,13 +1,15 @@
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {mount, flushPromises} from '@vue/test-utils';
 import AssessmentView from './AssessmentView.vue';
 import {api} from '../api/portal.js';
 vi.mock('../api/portal.js', () => ({api: {assess: vi.fn()}}));
 vi.mock('element-plus', () => ({ElMessage: {warning: vi.fn()}}));
 let wrapper;
+beforeEach(() => vi.spyOn(window, 'scrollTo').mockImplementation(() => {}));
 afterEach(() => {
   wrapper?.unmount();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 describe('psychological assessment', () => {
   it('requires all nine answers and persists the result through the API', async () => {

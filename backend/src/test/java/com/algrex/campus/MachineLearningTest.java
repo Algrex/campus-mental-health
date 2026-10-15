@@ -25,7 +25,9 @@ class MachineLearningTest {
     for (int index = 0; index < 1500; index++) {
       csv.append(1001 + index)
           .append(",20,Female,Science,")
-          .append(index % 10 == 0 ? "2.0,5.0,7.0,6.0,10,9,True" : "3.5,8.0,5.0,2.0,90,2,False")
+          .append(index % 10 == 0 ? "2.0,5.0,7.0,6.0," : "3.5,8.0,5.0,2.0,")
+          .append(index)
+          .append(index % 10 == 0 ? ",9,True" : ",2,False")
           .append("\n");
     }
     Files.writeString(file, csv);
@@ -51,6 +53,17 @@ class MachineLearningTest {
       double[][] matrix = (double[][]) operating.get("confusionMatrix");
       assertThat(matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1]).isEqualTo(300);
     }
+    java.util.Set<Double> seen = new java.util.HashSet<>();
+    for (String partition : List.of("training", "validation", "testing")) {
+      try (var reader =
+          Files.newBufferedReader(directory.resolve("out/lifestyle/" + partition + ".arff"))) {
+        weka.core.Instances split = new weka.core.Instances(reader);
+        for (weka.core.Instance row : split) {
+          assertThat(seen.add(row.value(split.attribute("physical_activity_minutes")))).isTrue();
+        }
+      }
+    }
+    assertThat(seen).hasSize(1500);
     assertThat(
             service.predict(
                 new PredictionDraft(
@@ -139,6 +152,26 @@ class MachineLearningTest {
                 new MachineLearningService(
                         directory.resolve("missing.csv").toString(), artifacts.toString(), false)
                     .train())
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void missingDataAndInvalidExperimentSelectorsHaveExplicitFailureStates() throws Exception {
+    MachineLearningService service =
+        new MachineLearningService(
+            directory.resolve("missing.csv").toString(), directory.resolve("out").toString(), true);
+    service.run(null);
+    assertThat(service.summary()).containsEntry("status", "NO_DATA");
+    assertThat(service.summary("survey")).containsEntry("status", "NO_DATA");
+    assertThatThrownBy(() -> service.summary("unknown"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> service.train("unknown")).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () -> service.predict(new PredictionDraft(20, "Female", "Computing", 2, 3.25, "No")))
+        .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    Path invalid = directory.resolve("invalid.csv");
+    Files.writeString(invalid, "bad,header\n1,2\n");
+    assertThatThrownBy(() -> SurveyDataset.load(invalid))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

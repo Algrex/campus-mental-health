@@ -41,6 +41,7 @@ watch(
     draft.value = {kind: '沟通访谈', content: '', nextDate: ''};
     load();
   },
+  {immediate: true},
 );
 async function action(name) {
   saving.value = true;
